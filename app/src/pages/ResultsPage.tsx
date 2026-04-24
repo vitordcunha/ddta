@@ -21,7 +21,7 @@ export function ResultsPage() {
   const project = getProject(id)
   const initialStatus = project?.status === 'processing' || project?.status === 'completed' ? project.status : 'uploading'
 
-  const { status, progress, message, eta, logs, startProcessing, cancelProcessing } = useProjectStatus(initialStatus)
+  const { status, progress, message, eta, logs, startProcessing, cancelProcessing } = useProjectStatus(id, initialStatus)
   const [activeLayer, setActiveLayer] = useState<ResultLayerId>('orthophoto')
   const [opacity, setOpacity] = useState(85)
   const [preset, setPreset] = useState<ProcessingPreset>('standard')
@@ -53,9 +53,9 @@ export function ResultsPage() {
         </div>
       </Card>
 
-      {status === 'uploading' ? <StartProcessingPanel selectedPreset={preset} onSelectPreset={setPreset} onStart={startProcessing} /> : null}
+      {status === 'uploading' ? <StartProcessingPanel selectedPreset={preset} onSelectPreset={setPreset} onStart={() => void startProcessing()} /> : null}
 
-      {status === 'processing' ? <ProcessingView progress={progress} message={message} eta={eta} logs={logs} onCancel={cancelProcessing} /> : null}
+      {status === 'processing' ? <ProcessingView progress={progress} message={message} eta={eta} logs={logs} onCancel={() => void cancelProcessing()} /> : null}
 
       {status === 'completed' ? (
         <>

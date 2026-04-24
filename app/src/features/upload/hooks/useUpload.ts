@@ -1,45 +1,57 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import type { FileQueueItem } from '@/features/upload/types/upload'
+import { uploadFileInChunks } from '@/services/uploadService'
 
 type UploadUpdater = (id: string, patch: Partial<FileQueueItem>) => void
 
 interface UseUploadOptions {
   files: FileQueueItem[]
   updateFile: UploadUpdater
+  projectId?: string
   maxConcurrent?: number
 }
 
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-export function useUpload({ files, updateFile, maxConcurrent = 3 }: UseUploadOptions) {
+export function useUpload({ files, updateFile, projectId, maxConcurrent = 3 }: UseUploadOptions) {
   const [isUploading, setIsUploading] = useState(false)
   const [isCancelling, setIsCancelling] = useState(false)
   const abortRef = useRef(false)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   const uploadSingle = useCallback(
     async (file: FileQueueItem) => {
-      updateFile(file.id, { status: 'uploading', progress: 0, errorMessage: undefined })
-      const steps = 30
+      if (!projectId) {
+        updateFile(file.id, { status: 'error', errorMessage: 'Projeto invalido para upload.' })
+        return
+      }
 
-      for (let step = 1; step <= steps; step += 1) {
+      updateFile(file.id, { status: 'uploading', progress: 0, errorMessage: undefined })
+      try {
+        await uploadFileInChunks({
+          projectId,
+          fileId: file.id,
+          file: file.file,
+          signal: abortControllerRef.current?.signal,
+          onProgress: (progress) => updateFile(file.id, { progress }),
+        })
+
         if (abortRef.current) {
           updateFile(file.id, { status: 'pending', progress: 0 })
           return
         }
-        await wait(100)
-        updateFile(file.id, { progress: Math.round((step / steps) * 100) })
-      }
 
-      if (abortRef.current) {
-        updateFile(file.id, { status: 'pending', progress: 0 })
-        return
+        updateFile(file.id, { status: 'done', progress: 100 })
+      } catch {
+        if (abortRef.current) {
+          updateFile(file.id, { status: 'pending', progress: 0 })
+          return
+        }
+        updateFile(file.id, {
+          status: 'error',
+          errorMessage: 'Falha no upload. Tente novamente.',
+        })
       }
-
-      updateFile(file.id, { status: 'done', progress: 100 })
     },
-    [updateFile],
+    [projectId, updateFile],
   )
 
   const uploadAll = useCallback(async () => {
@@ -50,6 +62,7 @@ export function useUpload({ files, updateFile, maxConcurrent = 3 }: UseUploadOpt
     setIsUploading(true)
     setIsCancelling(false)
     abortRef.current = false
+    abortControllerRef.current = new AbortController()
 
     const workers = Array.from({ length: Math.min(maxConcurrent, queue.length) }, (_, workerIndex) =>
       (async () => {
@@ -60,15 +73,20 @@ export function useUpload({ files, updateFile, maxConcurrent = 3 }: UseUploadOpt
       })(),
     )
 
-    await Promise.all(workers)
-    setIsUploading(false)
-    setIsCancelling(false)
-    abortRef.current = false
+    try {
+      await Promise.all(workers)
+    } finally {
+      setIsUploading(false)
+      setIsCancelling(false)
+      abortRef.current = false
+      abortControllerRef.current = null
+    }
   }, [files, isUploading, maxConcurrent, uploadSingle])
 
   const cancelAll = useCallback(() => {
     if (!isUploading) return
     abortRef.current = true
+    abortControllerRef.current?.abort()
     setIsCancelling(true)
   }, [isUploading])
 

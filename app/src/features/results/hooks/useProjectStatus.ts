@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ProcessingLogEntry, ProcessingStep } from '@/features/results/types'
+import { projectsService } from '@/services/projectsService'
 
 const steps: ProcessingStep[] = [
   { progress: 0, message: 'Iniciando processamento...' },
@@ -13,12 +14,19 @@ const steps: ProcessingStep[] = [
 
 type RuntimeStatus = 'uploading' | 'processing' | 'completed' | 'failed'
 
-export function useProjectStatus(initialStatus: RuntimeStatus) {
+type StreamStatusPayload = {
+  status?: RuntimeStatus
+  progress?: number
+  message?: string
+}
+
+export function useProjectStatus(projectId: string, initialStatus: RuntimeStatus) {
   const [status, setStatus] = useState<RuntimeStatus>(initialStatus)
   const [progress, setProgress] = useState(initialStatus === 'completed' ? 100 : 0)
   const [message, setMessage] = useState(initialStatus === 'completed' ? 'Concluido' : 'Aguardando')
   const [logs, setLogs] = useState<ProcessingLogEntry[]>([])
   const timerRef = useRef<number | null>(null)
+  const streamRef = useRef<EventSource | null>(null)
 
   const stopTimer = useCallback(() => {
     if (timerRef.current) {
@@ -29,38 +37,68 @@ export function useProjectStatus(initialStatus: RuntimeStatus) {
 
   useEffect(() => stopTimer, [stopTimer])
 
-  const startProcessing = useCallback(() => {
+  const stopStream = useCallback(() => {
+    streamRef.current?.close()
+    streamRef.current = null
+  }, [])
+
+  useEffect(() => stopStream, [stopStream])
+
+  const openStream = useCallback(() => {
+    if (!projectId) return
+    stopStream()
+
+    const eventSource = new EventSource(projectsService.getStatusStreamUrl(projectId))
+    streamRef.current = eventSource
+
+    eventSource.onmessage = (event) => {
+      const payload = JSON.parse(event.data) as StreamStatusPayload
+      const incomingStatus = payload.status ?? 'processing'
+      const incomingProgress = Math.max(0, Math.min(100, Math.round(payload.progress ?? 0)))
+
+      setStatus(incomingStatus)
+      setProgress(incomingProgress)
+
+      const currentStep = [...steps].reverse().find((step) => incomingProgress >= step.progress) ?? steps[0]
+      const text = payload.message ?? currentStep.message
+      setMessage(text)
+      setLogs((prev) => {
+        if (prev.some((entry) => entry.message === text)) return prev
+        return [...prev, { timestamp: new Date().toLocaleTimeString('pt-BR'), message: text }]
+      })
+
+      if (incomingStatus === 'completed' || incomingStatus === 'failed') {
+        stopStream()
+      }
+    }
+  }, [projectId, stopStream])
+
+  const startProcessing = useCallback(async () => {
+    if (!projectId) return
     stopTimer()
     setStatus('processing')
     setProgress(0)
     setMessage(steps[0].message)
     setLogs([{ timestamp: new Date().toLocaleTimeString('pt-BR'), message: steps[0].message }])
+    await projectsService.startProcessing(projectId)
+    openStream()
+  }, [openStream, projectId, stopTimer])
 
-    let value = 0
-    timerRef.current = window.setInterval(() => {
-      value = Math.min(value + Math.ceil(Math.random() * 4), 100)
-      setProgress(value)
-
-      const currentStep = [...steps].reverse().find((step) => value >= step.progress) ?? steps[0]
-      setMessage(currentStep.message)
-      setLogs((prev) => {
-        const alreadyLogged = prev.some((entry) => entry.message === currentStep.message)
-        if (alreadyLogged) return prev
-        return [...prev, { timestamp: new Date().toLocaleTimeString('pt-BR'), message: currentStep.message }]
-      })
-
-      if (value >= 100) {
-        stopTimer()
-        setStatus('completed')
-      }
-    }, 1300)
-  }, [stopTimer])
-
-  const cancelProcessing = useCallback(() => {
+  const cancelProcessing = useCallback(async () => {
+    if (!projectId) return
     stopTimer()
+    stopStream()
+    await projectsService.cancelProcessing(projectId)
     setStatus('failed')
     setMessage('Processamento cancelado')
-  }, [stopTimer])
+  }, [projectId, stopStream, stopTimer])
+
+  useEffect(() => {
+    if (!projectId) return
+    if (status === 'processing') {
+      openStream()
+    }
+  }, [openStream, projectId, status])
 
   const eta = useMemo(() => {
     if (status !== 'processing') return 'n/a'

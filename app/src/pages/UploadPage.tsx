@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useParams } from 'react-router-dom'
 import { CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { GpsWarningBanner } from '@/features/upload/components/GpsWarningBanner'
@@ -9,10 +10,12 @@ import { useFileQueue } from '@/features/upload/hooks/useFileQueue'
 import { useUpload } from '@/features/upload/hooks/useUpload'
 
 export function UploadPage() {
+  const { id } = useParams()
   const { files, addFiles, updateFile, removeFile, clearDone, stats } = useFileQueue()
   const { uploadAll, cancelAll, isUploading, isCancelling, globalProgress } = useUpload({
     files,
     updateFile,
+    projectId: id,
   })
 
   const totalBytes = useMemo(() => files.reduce((sum, item) => sum + item.file.size, 0), [files])

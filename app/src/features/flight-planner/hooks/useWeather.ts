@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
-import { assessFlightConditions, getMockWeather } from '@/features/flight-planner/utils/weatherHelpers'
+import { assessFlightConditions } from '@/features/flight-planner/utils/weatherHelpers'
 import type { DroneModel, FlightAssessment, WeatherData } from '@/features/flight-planner/types'
+import { weatherService } from '@/services/weatherService'
 
 export function useWeather(droneModel: DroneModel, altitudeM: number) {
   const [weather, setWeather] = useState<WeatherData | null>(null)
@@ -12,12 +13,11 @@ export function useWeather(droneModel: DroneModel, altitudeM: number) {
     try {
       setIsLoading(true)
       setError(null)
-      await new Promise((resolve) => window.setTimeout(resolve, 550))
-      const mock = getMockWeather(lat, lon)
-      setWeather(mock)
-      setAssessment(assessFlightConditions(mock, droneModel, altitudeM))
+      const current = await weatherService.getCurrent(lat, lon)
+      setWeather(current)
+      setAssessment(assessFlightConditions(current, droneModel, altitudeM))
     } catch {
-      setError('Falha ao carregar clima simulado.')
+      setError('Falha ao carregar clima em tempo real.')
     } finally {
       setIsLoading(false)
     }
