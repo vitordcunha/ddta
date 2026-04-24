@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --safe-area-top: env(safe-area-inset-top);
+  --safe-area-bottom: env(safe-area-inset-bottom);
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  @apply bg-neutral-900 text-neutral-100 font-sans antialiased;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #393939 #171717;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  @apply bg-neutral-900;
+}
+
+*::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-neutral-700;
+}
+
+*:focus-visible {
+  @apply outline-none ring-2 ring-primary-500 ring-offset-2 ring-offset-neutral-900;
+}
+
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.skeleton {
+  @apply animate-pulse rounded-md bg-neutral-800;
+}
+
+@layer components {
+  .input-base {
+    @apply h-10 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none transition placeholder:text-neutral-500 focus-visible:border-primary-500;
+  }
+
+  .textarea-base {
+    @apply min-h-28 w-full rounded-lg border border-neutral-800 bg-neutral-950 p-3 text-sm text-neutral-100 outline-none transition placeholder:text-neutral-500 focus-visible:border-primary-500;
+  }
+}

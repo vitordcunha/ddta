@@ -1,0 +1,1 @@
+"""Flight planning pure logic."""
