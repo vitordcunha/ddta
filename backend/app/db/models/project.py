@@ -1,6 +1,4 @@
-from uuid import UUID
-
-from sqlalchemy import Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Float, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -12,9 +10,6 @@ from app.db.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 class Project(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "projects"
 
-    user_id: Mapped[UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=True
-    )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str] = mapped_column(Text, default="", nullable=False)
     status: Mapped[str] = mapped_column(String(50), default="draft", nullable=False)
@@ -24,6 +19,7 @@ class Project(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     side_overlap: Mapped[int | None] = mapped_column(Integer, nullable=True)
     rotation_angle: Mapped[float | None] = mapped_column(Float, nullable=True)
     flight_area = mapped_column(Geometry(geometry_type="POLYGON", srid=4326), nullable=True)
+    planner_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     stats: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     assets: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     processing_task_uuid: Mapped[str | None] = mapped_column(String(100), nullable=True)

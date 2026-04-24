@@ -1,4 +1,5 @@
 import { Pencil, Trash2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { Button, Card } from '@/components/ui'
 import { ProjectStatusBadge } from '@/features/projects/components/ProjectStatusBadge'
 import type { Project } from '@/types/project'
@@ -16,6 +17,12 @@ export function ProjectListItem({ project, onEdit, onDelete }: ProjectListItemPr
         <div className="min-w-0">
           <h3 className="truncate font-medium">{project.name}</h3>
           <p className="text-sm text-neutral-400">{project.imageCount} imagens</p>
+          <Link
+            to={`/?project=${project.id}&panel=plan`}
+            className="text-sm text-[#00c573] underline-offset-4 hover:text-[#3ecf8e] hover:underline"
+          >
+            Abrir planejador
+          </Link>
         </div>
         <ProjectStatusBadge status={project.status} />
       </div>

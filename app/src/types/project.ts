@@ -1,4 +1,4 @@
-export type ProjectStatus = 'created' | 'uploading' | 'processing' | 'completed' | 'failed'
+export type ProjectStatus = 'draft' | 'created' | 'uploading' | 'processing' | 'completed' | 'failed'
 
 export type ProjectAssets = {
   orthophotoUrl?: string

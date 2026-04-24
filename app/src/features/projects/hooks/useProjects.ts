@@ -1,13 +1,17 @@
 import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
+import { clearFlightPlanDraft } from '@/features/flight-planner/utils/flightPlanDraftStorage'
+import type { PersistedFlightPlan } from '@/features/flight-planner/stores/useFlightStore'
 import { projectsService } from '@/services/projectsService'
 import type { CreateProjectData, Project } from '@/types/project'
 
 export type UseProjectsReturn = {
   projects: Project[]
   isLoading: boolean
-  createProject: (data: CreateProjectData) => Project
+  createProject: (data: CreateProjectData) => Promise<Project>
   updateProject: (id: string, data: Partial<Project>) => void
+  saveFlightPlan: (id: string, plan: PersistedFlightPlan) => Promise<Project>
   deleteProject: (id: string) => void
   getProject: (id: string) => Project | undefined
 }
@@ -21,8 +25,12 @@ export function useProjects(): UseProjectsReturn {
 
   const createMutation = useMutation({
     mutationFn: projectsService.create,
-    onSuccess: () => {
+    onSuccess: (data) => {
       void queryClient.invalidateQueries({ queryKey: ['projects'] })
+      toast.success(`Projeto \"${data.name}\" criado.`)
+    },
+    onError: () => {
+      toast.error('Nao foi possivel criar o projeto.')
     },
   })
 
@@ -30,13 +38,34 @@ export function useProjects(): UseProjectsReturn {
     mutationFn: ({ id, payload }: { id: string; payload: Partial<Project> }) => projectsService.update(id, payload),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['projects'] })
+      toast.success('Projeto atualizado.')
+    },
+    onError: () => {
+      toast.error('Nao foi possivel atualizar o projeto.')
+    },
+  })
+
+  const saveFlightPlanMutation = useMutation({
+    mutationFn: ({ id, plan }: { id: string; plan: PersistedFlightPlan }) => projectsService.saveFlightPlan(id, plan),
+    onSuccess: (_data, { id }) => {
+      void queryClient.invalidateQueries({ queryKey: ['projects'] })
+      clearFlightPlanDraft(id)
+      toast.success('Plano de voo salvo no servidor.')
+    },
+    onError: () => {
+      toast.error('Nao foi possivel salvar o plano. Tente novamente.')
     },
   })
 
   const deleteMutation = useMutation({
     mutationFn: projectsService.remove,
-    onSuccess: () => {
+    onSuccess: (_void, id) => {
       void queryClient.invalidateQueries({ queryKey: ['projects'] })
+      clearFlightPlanDraft(id)
+      toast.success('Projeto excluido.')
+    },
+    onError: () => {
+      toast.error('Nao foi possivel excluir o projeto.')
     },
   })
 
@@ -44,20 +73,8 @@ export function useProjects(): UseProjectsReturn {
     return [...projects].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
   }, [projects])
 
-  const createProject = (data: CreateProjectData) => {
-    const optimisticProject: Project = {
-      id: crypto.randomUUID(),
-      name: data.name,
-      description: data.description ?? '',
-      status: 'created',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      flightPlan: null,
-      imageCount: 0,
-      assets: null,
-    }
-    createMutation.mutate(data)
-    return optimisticProject
+  const createProject = async (data: CreateProjectData) => {
+    return createMutation.mutateAsync(data)
   }
 
   const updateProject = (id: string, data: Partial<Project>) => {
@@ -68,6 +85,10 @@ export function useProjects(): UseProjectsReturn {
     deleteMutation.mutate(id)
   }
 
+  const saveFlightPlan = (id: string, plan: PersistedFlightPlan) => {
+    return saveFlightPlanMutation.mutateAsync({ id, plan })
+  }
+
   const getProject = (id: string) => sortedProjects.find((project) => project.id === id)
 
   return {
@@ -75,6 +96,7 @@ export function useProjects(): UseProjectsReturn {
     isLoading,
     createProject,
     updateProject,
+    saveFlightPlan,
     deleteProject,
     getProject,
   }

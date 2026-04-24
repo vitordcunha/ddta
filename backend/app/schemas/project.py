@@ -13,6 +13,7 @@ class ProjectUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     description: str | None = Field(default=None, max_length=1000)
     flight_area: dict | None = None
+    planner_data: dict | None = None
     altitude_m: float | None = Field(default=None, gt=0)
     forward_overlap: int | None = Field(default=None, ge=0, le=99)
     side_overlap: int | None = Field(default=None, ge=0, le=99)
@@ -26,6 +27,7 @@ class ProjectFlightPlanSave(BaseModel):
     side_overlap: int | None = Field(default=None, ge=0, le=99)
     rotation_angle: float | None = None
     stats: dict | None = None
+    planner_data: dict | None = None
 
 
 class ProjectImageResponse(BaseModel):
@@ -52,6 +54,7 @@ class ProjectResponse(BaseModel):
     side_overlap: int | None
     rotation_angle: float | None
     flight_area: dict | None = None
+    planner_data: dict | None = None
     stats: dict | None
     assets: dict | None
     processing_task_uuid: str | None = None
@@ -69,6 +72,7 @@ class ProjectListItem(BaseModel):
     description: str
     status: str
     progress: int
+    planner_data: dict | None = None
     created_at: datetime
     updated_at: datetime
 

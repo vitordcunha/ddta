@@ -1,26 +1,16 @@
-import { Navigate, createBrowserRouter } from "react-router-dom";
-import { AppShell } from "@/components/layout/AppShell";
-import { ROUTES } from "@/constants/routes";
-import { DashboardPage } from "@/pages/DashboardPage";
-import { FlightPlannerPage } from "@/pages/FlightPlannerPage";
-import { NewProjectPage } from "@/pages/NewProjectPage";
-import { ProjectDetailPage } from "@/pages/ProjectDetailPage";
-import { ResultsPage } from "@/pages/ResultsPage";
-import { SettingsPage } from "@/pages/SettingsPage";
-import { UploadPage } from "@/pages/UploadPage";
+import { Navigate, createBrowserRouter } from "react-router-dom"
+import { LegacyProjectPanelRedirect, LegacyProjectToWorkspace } from "@/router/legacyWorkspaceRedirects"
+import { WORKSPACE_ROOT } from "@/constants/routes"
+import { WorkspacePage } from "@/pages/WorkspacePage"
 
 export const router = createBrowserRouter([
-  { path: ROUTES.ROOT, element: <Navigate to={ROUTES.DASHBOARD} replace /> },
-  {
-    element: <AppShell />,
-    children: [
-      { path: ROUTES.DASHBOARD, element: <DashboardPage /> },
-      { path: ROUTES.PROJECT_NEW, element: <NewProjectPage /> },
-      { path: ROUTES.PROJECT_DETAIL, element: <ProjectDetailPage /> },
-      { path: ROUTES.PROJECT_PLAN, element: <FlightPlannerPage /> },
-      { path: ROUTES.PROJECT_UPLOAD, element: <UploadPage /> },
-      { path: ROUTES.PROJECT_RESULTS, element: <ResultsPage /> },
-      { path: ROUTES.SETTINGS, element: <SettingsPage /> },
-    ],
-  },
-]);
+  { path: WORKSPACE_ROOT, element: <WorkspacePage /> },
+  { path: "/dashboard", element: <Navigate to="/?panel=projects" replace /> },
+  { path: "/settings", element: <Navigate to="/?panel=settings" replace /> },
+  { path: "/projects/new", element: <Navigate to="/?panel=projects" replace /> },
+  { path: "/projects/:id", element: <LegacyProjectToWorkspace /> },
+  { path: "/projects/:id/plan", element: <LegacyProjectPanelRedirect panel="plan" /> },
+  { path: "/projects/:id/upload", element: <LegacyProjectPanelRedirect panel="upload" /> },
+  { path: "/projects/:id/results", element: <LegacyProjectPanelRedirect panel="results" /> },
+  { path: "*", element: <Navigate to={WORKSPACE_ROOT} replace /> },
+])

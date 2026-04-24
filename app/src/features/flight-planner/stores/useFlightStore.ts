@@ -1,10 +1,12 @@
 import { create } from 'zustand'
 import type { Feature, Polygon } from 'geojson'
+import type { PlannerBaseLayerId } from '@/features/flight-planner/constants/mapBaseLayers'
 import type {
   FlightAssessment,
   FlightParams,
   FlightStats,
   PlannerGeoPolygon,
+  Strip,
   WeatherData,
   Waypoint,
 } from '@/features/flight-planner/types'
@@ -18,11 +20,28 @@ export type PersistedFlightPlan = {
   assessment: FlightAssessment | null
 }
 
+export type PlannerInteractionMode = 'navigate' | 'draw'
+
+/** Posicao de referencia para aproximar o primeiro waypoint da rota (ex.: operador). */
+export type RouteStartRef = { lat: number; lng: number }
+
 type FlightStore = PersistedFlightPlan & {
+  strips: Strip[]
   isCalculating: boolean
+  /** Quando definido, o calculo escolhe LTR/RTL e sentido do percurso para minimizar distancia ate este ponto. */
+  routeStartRef: RouteStartRef | null
+  setRouteStartRef: (ref: RouteStartRef | null) => void
+  draftPoints: [number, number][]
+  setDraftPoints: (points: [number, number][]) => void
+  addDraftPoint: (point: [number, number]) => void
+  popLastDraftPoint: () => void
+  plannerInteractionMode: PlannerInteractionMode
+  setPlannerInteractionMode: (mode: PlannerInteractionMode) => void
+  plannerBaseLayer: PlannerBaseLayerId
+  setPlannerBaseLayer: (id: PlannerBaseLayerId) => void
   setPolygon: (polygon: PlannerGeoPolygon | null) => void
   setParams: (params: Partial<FlightParams>) => void
-  setResult: (waypoints: Waypoint[], stats: FlightStats | null) => void
+  setResult: (waypoints: Waypoint[], stats: FlightStats | null, strips: Strip[]) => void
   setWeather: (weather: WeatherData | null, assessment: FlightAssessment | null) => void
   setIsCalculating: (value: boolean) => void
   loadPlan: (plan: PersistedFlightPlan) => void
@@ -42,24 +61,44 @@ export const useFlightStore = create<FlightStore>((set) => ({
   polygon: null,
   params: initialFlightParams,
   waypoints: [],
+  strips: [],
   stats: null,
   weather: null,
   assessment: null,
   isCalculating: false,
+  routeStartRef: null,
+  draftPoints: [],
+  plannerInteractionMode: 'draw',
+  plannerBaseLayer: 'dark',
+  setRouteStartRef: (routeStartRef) => set({ routeStartRef }),
+  setDraftPoints: (draftPoints) => set({ draftPoints }),
+  addDraftPoint: (point) =>
+    set((state) => ({ draftPoints: [...state.draftPoints, point] })),
+  popLastDraftPoint: () =>
+    set((state) => ({
+      draftPoints: state.draftPoints.slice(0, -1),
+    })),
+  setPlannerInteractionMode: (plannerInteractionMode) =>
+    set({ plannerInteractionMode }),
+  setPlannerBaseLayer: (plannerBaseLayer) => set({ plannerBaseLayer }),
   setPolygon: (polygon) => set({ polygon }),
   setParams: (params) => set((state) => ({ params: { ...state.params, ...params } })),
-  setResult: (waypoints, stats) => set({ waypoints, stats }),
+  setResult: (waypoints, stats, strips) => set({ waypoints, stats, strips }),
   setWeather: (weather, assessment) => set({ weather, assessment }),
   setIsCalculating: (value) => set({ isCalculating: value }),
-  loadPlan: (plan) => set({ ...plan }),
+  loadPlan: (plan) => set({ ...plan, draftPoints: [], strips: [], routeStartRef: null }),
   resetPlan: () =>
     set({
       polygon: null,
       params: initialFlightParams,
       waypoints: [],
+      strips: [],
       stats: null,
       weather: null,
       assessment: null,
       isCalculating: false,
+      routeStartRef: null,
+      draftPoints: [],
+      plannerInteractionMode: 'draw',
     }),
 }))

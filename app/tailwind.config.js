@@ -47,8 +47,21 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['Circular', 'Helvetica Neue', 'Helvetica', 'Arial', 'sans-serif'],
-        mono: ['Source Code Pro', 'Office Code Pro', 'Menlo', 'monospace'],
+        sans: [
+          'Inter',
+          'Circular',
+          'Helvetica Neue',
+          'Helvetica',
+          'Arial',
+          'sans-serif',
+        ],
+        mono: [
+          'Source Code Pro',
+          'Office Code Pro',
+          'ui-monospace',
+          'Menlo',
+          'monospace',
+        ],
       },
       keyframes: {
         fadeIn: {

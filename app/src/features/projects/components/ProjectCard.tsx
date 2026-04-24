@@ -1,4 +1,5 @@
 import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { Button, Card, CardBody, CardFooter, CardHeader } from '@/components/ui'
 import { ProjectStatusBadge } from '@/features/projects/components/ProjectStatusBadge'
 import type { Project } from '@/types/project'
@@ -10,7 +11,8 @@ type ProjectCardProps = {
 }
 
 export function ProjectCard({ project, onEdit, onDelete }: ProjectCardProps) {
-  const createdAt = new Date(project.createdAt).toLocaleDateString('pt-BR')
+  const parsedDate = new Date(project.createdAt)
+  const createdAt = Number.isNaN(parsedDate.getTime()) ? 'Data indisponivel' : parsedDate.toLocaleDateString('pt-BR')
 
   return (
     <Card className="flex h-full flex-col transition-colors hover:border-neutral-700">
@@ -30,6 +32,12 @@ export function ProjectCard({ project, onEdit, onDelete }: ProjectCardProps) {
       <CardBody className="space-y-1">
         <h3 className="line-clamp-1 font-medium">{project.name}</h3>
         <p className="line-clamp-2 text-sm text-neutral-400">{project.description || 'Sem descricao'}</p>
+        <Link
+          to={`/?project=${project.id}&panel=plan`}
+          className="inline-flex pt-2 text-sm text-[#00c573] underline-offset-4 hover:text-[#3ecf8e] hover:underline"
+        >
+          Abrir planejador
+        </Link>
       </CardBody>
       <CardFooter className="mt-auto space-y-2 text-sm text-neutral-400">
         <p>{createdAt}</p>

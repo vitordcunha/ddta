@@ -44,12 +44,16 @@ def organize_results(project_id: UUID, odm_results_dir: Path) -> dict[str, str]:
     destination = get_project_dir(project_id) / "results"
     destination.mkdir(parents=True, exist_ok=True)
     assets: dict[str, str] = {}
-    for path in odm_results_dir.iterdir():
+    if not odm_results_dir.exists():
+        return assets
+    for path in odm_results_dir.rglob("*"):
         if not path.is_file():
             continue
-        target = destination / path.name
+        relative = path.relative_to(odm_results_dir)
+        target = destination / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(path.read_bytes())
-        assets[path.stem] = str(target)
+        assets[relative.as_posix()] = str(target)
     return assets
 
 

@@ -20,7 +20,7 @@ async def stream_project_status(project_id: UUID, db: AsyncSession = Depends(get
         raise HTTPException(status_code=404, detail="Project not found")
 
     async def event_generator():
-        terminal_states = {"completed", "failed", "canceled"}
+        terminal_states = {"completed", "failed", "canceled", "cancelled"}
         while True:
             result = await db.execute(select(Project).where(Project.id == project_id))
             current = result.scalar_one_or_none()

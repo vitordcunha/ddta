@@ -11,7 +11,9 @@ Este repositorio possui:
 - Docker + Docker Compose
 - Node.js 20+ e npm
 
-## 1) Subir o backend
+## 1) Backend: dois modos de execucao
+
+### Modo A: backend em Docker
 
 No diretorio `backend/`:
 
@@ -19,12 +21,30 @@ No diretorio `backend/`:
 cd backend
 cp .env.example .env
 docker compose up -d --build
+docker compose exec api alembic upgrade head
 ```
 
-Depois aplique as migracoes:
+### Modo B: backend local (Python) + apenas `db` e `redis` no Docker
+
+1. Suba somente banco e redis:
 
 ```bash
-docker compose exec api alembic upgrade head
+cd backend
+docker compose up -d db redis
+```
+
+2. Configure variaveis para rodar local:
+
+```bash
+cp .env.local.example .env
+```
+
+3. Instale dependencias Python e rode a API local:
+
+```bash
+pip install -e ".[dev]"
+alembic upgrade head
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 API disponivel em: `http://localhost:8000`
@@ -62,21 +82,30 @@ VITE_WORKSPACE_ID=default
 
 ## 4) Worker Celery (necessario para processamento em background)
 
-O `docker-compose.yml` atual sobe `api`, `db` e `redis`. Para executar tarefas em background (processamento), rode o worker manualmente:
+### Se backend estiver em Docker
 
 ```bash
 cd backend
 docker compose exec api celery -A app.tasks.celery_app.celery_app worker --loglevel=info
 ```
 
-## Fluxo rapido para rodar tudo
+### Se backend estiver local
 
-1. `cd backend && cp .env.example .env`
-2. `cd backend && docker compose up -d --build`
-3. `cd backend && docker compose exec api alembic upgrade head`
-4. (Opcional, recomendado) iniciar worker Celery
-5. `cd app && npm install && npm run dev`
-6. Abrir `http://localhost:5173`
+```bash
+cd backend
+celery -A app.tasks.celery_app.celery_app worker --loglevel=info
+```
+
+## Fluxo rapido recomendado (backend local + db/redis no Docker)
+
+1. `cd backend && docker compose up -d db redis`
+2. `cd backend && cp .env.local.example .env`
+3. `cd backend && pip install -e ".[dev]"`
+4. `cd backend && alembic upgrade head`
+5. `cd backend && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`
+6. (Opcional, recomendado) iniciar worker Celery local
+7. `cd app && npm install && npm run dev`
+8. Abrir `http://localhost:5173`
 
 ## Comandos uteis
 
@@ -84,7 +113,8 @@ docker compose exec api celery -A app.tasks.celery_app.celery_app worker --logle
 
 ```bash
 cd backend
-docker compose logs -f api
+docker compose logs -f db
+docker compose logs -f redis
 docker compose down
 ```
 

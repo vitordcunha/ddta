@@ -8,9 +8,6 @@ class Settings(BaseSettings):
     database_url: str
     sync_database_url: str
     redis_url: str
-    secret_key: str
-    access_token_expire_minutes: int = 60
-    jwt_algorithm: str = "HS256"
     odm_node_host: str = "localhost"
     odm_node_port: int = 3000
     storage_path: Path = Path("/data")
@@ -25,7 +22,11 @@ class Settings(BaseSettings):
     rate_limit_processing: str = "20/minute"
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     @property
     def cors_origins_list(self) -> list[str]:

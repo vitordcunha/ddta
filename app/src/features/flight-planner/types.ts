@@ -51,12 +51,37 @@ export type FlightStats = {
   distanceKm: number
 }
 
+export type WeatherForecastHour = {
+  /** ISO local (Open-Meteo, timezone=auto) */
+  time: string
+  tempC: number
+  precipProbPct: number
+  precipMm: number
+  weatherCode: number
+}
+
 export type WeatherData = {
   windSpeedMs: number
   windDirectionDeg: number
   temperatureC: number
   cloudCoveragePct: number
+  /** Precipitacao total atual (mm/h equivalente agregado) */
   rainMmH: number
+  /** Codigo WMO; ver interpretacao em weatherHelpers */
+  weatherCode?: number
+  conditionLabel?: string
+  /** Precipitacao mensuravel agora (chuva/chuvisco, etc.) */
+  isPrecipitatingNow?: boolean
+  relativeHumidityPct?: number
+  apparentTemperatureC?: number
+  pressureHpa?: number
+  windGustsMs?: number
+  isDay?: boolean
+  /** Chuva e aguaceiros separados (mm/h), quando disponiveis */
+  rainMmHRaw?: number
+  showersMmH?: number
+  /** Proximas horas (tipicamente 24) */
+  hourlyForecast?: WeatherForecastHour[]
 }
 
 export type FlightAssessment = {

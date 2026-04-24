@@ -102,6 +102,7 @@ async def _serialize_project(db: AsyncSession, project: Project) -> ProjectRespo
         side_overlap=project.side_overlap,
         rotation_angle=project.rotation_angle,
         flight_area=flight_area,
+        planner_data=project.planner_data,
         stats=project.stats,
         assets=project.assets,
         processing_task_uuid=project.processing_task_uuid,

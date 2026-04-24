@@ -28,11 +28,19 @@ function metersToDegreesLon(meters: number, latitude: number): number {
   return meters / (111320 * Math.cos((latitude * Math.PI) / 180))
 }
 
+export type FlightGridScanDirection = 'ltr' | 'rtl'
+
+export type GenerateFlightGridOptions = {
+  scanDirection?: FlightGridScanDirection
+}
+
 export function generateFlightGrid(
   polygonGeoJSON: Feature<Polygon>,
   spacings: { sideSpacing: number; photoSpacing: number },
   rotationDeg: number,
+  options?: GenerateFlightGridOptions,
 ): Strip[] {
+  const scanDirection = options?.scanDirection ?? 'ltr'
   const bbox = turf.bbox(polygonGeoJSON)
   const center = turf.centerOfMass(polygonGeoJSON).geometry.coordinates
   const centerLat = center[1]
@@ -43,7 +51,13 @@ export function generateFlightGrid(
   const strips: Strip[] = []
   let stripIndex = 0
 
+  const lons: number[] = []
   for (let lon = rotatedBBox[0]; lon <= rotatedBBox[2]; lon += deltaLon) {
+    lons.push(lon)
+  }
+  const orderedLons = scanDirection === 'rtl' ? [...lons].reverse() : lons
+
+  for (const lon of orderedLons) {
     const scanLine = turf.lineString([
       [lon, rotatedBBox[1]],
       [lon, rotatedBBox[3]],
@@ -92,6 +106,61 @@ export function generateWaypoints(strips: Strip[], altitudeM: number): Waypoint[
       stripIndex,
     })),
   )
+}
+
+export type RouteStartRefLngLat = { lat: number; lng: number }
+
+function distanceMetersToFirstWaypoint(user: RouteStartRefLngLat, waypoints: Waypoint[]): number {
+  if (waypoints.length === 0) {
+    return Number.POSITIVE_INFINITY
+  }
+  const from = turf.point([user.lng, user.lat])
+  const to = turf.point([waypoints[0]!.lon, waypoints[0]!.lat])
+  return turf.distance(from, to, { units: 'kilometers' }) * 1000
+}
+
+function withReindexedWaypointIds(waypoints: Waypoint[]): Waypoint[] {
+  return waypoints.map((w, i) => ({
+    ...w,
+    id: `wp-${i}`,
+  }))
+}
+
+/**
+ * Escolhe ordem das faixas (LTR/RTL), sentido do zigue-zague e inversao do percurso
+ * para que o primeiro waypoint fique o mais proximo possivel da posicao de referencia.
+ */
+export function optimizeFlightPlanStart(
+  polygonGeoJSON: Feature<Polygon>,
+  spacings: { sideSpacing: number; photoSpacing: number },
+  rotationDeg: number,
+  altitudeM: number,
+  userLngLat: RouteStartRefLngLat,
+): { strips: Strip[]; waypoints: Waypoint[] } {
+  let best: { strips: Strip[]; waypoints: Waypoint[]; dist: number } | null = null
+
+  for (const scanDirection of ['ltr', 'rtl'] as const) {
+    const strips = generateFlightGrid(polygonGeoJSON, spacings, rotationDeg, { scanDirection })
+    if (strips.length === 0) {
+      continue
+    }
+    for (const reversePath of [false, true]) {
+      const base = generateWaypoints(strips, altitudeM)
+      const waypoints = reversePath ? withReindexedWaypointIds([...base].reverse()) : base
+      const dist = distanceMetersToFirstWaypoint(userLngLat, waypoints)
+      if (!best || dist < best.dist) {
+        best = { strips, waypoints, dist }
+      }
+    }
+  }
+
+  const fallbackStrips = generateFlightGrid(polygonGeoJSON, spacings, rotationDeg)
+  const fallbackWaypoints = generateWaypoints(fallbackStrips, altitudeM)
+  if (!best) {
+    return { strips: fallbackStrips, waypoints: fallbackWaypoints }
+  }
+
+  return { strips: best.strips, waypoints: best.waypoints }
 }
 
 export function calculateStats(

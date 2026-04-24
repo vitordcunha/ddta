@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Grid3X3, List } from 'lucide-react'
 import { Button } from '@/components/ui'
 import {
@@ -11,8 +12,9 @@ import {
 import { useDebounce } from '@/hooks/useDebounce'
 import type { Project } from '@/types/project'
 
-export function DashboardPage() {
+export function ProjectsWorkspacePanel() {
   const { projects, createProject, updateProject, deleteProject } = useProjects()
+  const [, setSearchParams] = useSearchParams()
   const [query, setQuery] = useState('')
   const [view, setView] = useState<'grid' | 'list'>('grid')
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
@@ -21,10 +23,8 @@ export function DashboardPage() {
 
   const debouncedQuery = useDebounce(query, 300)
   const filteredProjects = useMemo(() => {
-    if (!debouncedQuery.trim()) {
-      return projects
-    }
-    return projects.filter((project) => project.name.toLowerCase().includes(debouncedQuery.toLowerCase()))
+    if (!debouncedQuery.trim()) return projects
+    return projects.filter((p) => p.name.toLowerCase().includes(debouncedQuery.toLowerCase()))
   }, [debouncedQuery, projects])
 
   const closeCreateModal = () => {
@@ -33,29 +33,39 @@ export function DashboardPage() {
   }
 
   return (
-    <section className="animate-fade-in space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-lg font-medium">Projetos</h2>
-          <p className="text-sm text-neutral-400">{projects.length} projetos</p>
+          <p className="font-mono text-[11px] uppercase tracking-[1.2px] text-neutral-500">Biblioteca</p>
+          <p className="mt-0.5 text-sm text-[#898989]">{projects.length} projetos</p>
         </div>
         <Button size="sm" onClick={() => setIsCreateModalOpen(true)}>
-          Novo Projeto
+          Novo projeto
         </Button>
       </div>
 
-      <div className="flex flex-col gap-3 md:flex-row">
+      <div className="flex flex-col gap-3 sm:flex-row">
         <input
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(e) => setQuery(e.target.value)}
           placeholder="Buscar por nome"
           className="input-base flex-1"
         />
-        <div className="inline-flex rounded-full border border-neutral-800 bg-neutral-950 p-1">
-          <Button variant={view === 'grid' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('grid')} aria-label="Visualizacao em grade">
+        <div className="inline-flex shrink-0 rounded-full border border-[#2e2e2e] bg-[#0f0f0f] p-1">
+          <Button
+            variant={view === 'grid' ? 'secondary' : 'ghost'}
+            size="sm"
+            onClick={() => setView('grid')}
+            aria-label="Visualizacao em grade"
+          >
             <Grid3X3 className="size-4" />
           </Button>
-          <Button variant={view === 'list' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('list')} aria-label="Visualizacao em lista">
+          <Button
+            variant={view === 'list' ? 'secondary' : 'ghost'}
+            size="sm"
+            onClick={() => setView('list')}
+            aria-label="Visualizacao em lista"
+          >
             <List className="size-4" />
           </Button>
         </div>
@@ -80,21 +90,28 @@ export function DashboardPage() {
         open={isCreateModalOpen}
         onOpenChange={closeCreateModal}
         project={editingProject}
-        onSubmit={({ name, description }) => {
+        onSubmit={async ({ name, description }) => {
           if (editingProject) {
             updateProject(editingProject.id, { name, description })
             return
           }
-          createProject({ name, description })
+          const created = await createProject({ name, description })
+          setSearchParams(
+            (prev) => {
+              const n = new URLSearchParams(prev)
+              n.set('panel', 'plan')
+              n.set('project', created.id)
+              return n
+            },
+            { replace: true },
+          )
         }}
       />
       <DeleteProjectModal
         open={Boolean(projectToDelete)}
         project={projectToDelete}
         onOpenChange={(open) => {
-          if (!open) {
-            setProjectToDelete(null)
-          }
+          if (!open) setProjectToDelete(null)
         }}
         onConfirm={() => {
           if (projectToDelete) {
@@ -103,6 +120,6 @@ export function DashboardPage() {
           }
         }}
       />
-    </section>
+    </div>
   )
 }

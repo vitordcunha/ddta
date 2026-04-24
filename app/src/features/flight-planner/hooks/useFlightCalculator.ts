@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import type { Feature, Polygon } from 'geojson'
 import { useDebounce } from '@/hooks/useDebounce'
+import type { RouteStartRef } from '@/features/flight-planner/stores/useFlightStore'
 import { getDroneSpec } from '@/features/flight-planner/utils/droneSpecs'
 import {
   calculateFootprint,
@@ -9,10 +10,15 @@ import {
   calculateStats,
   generateFlightGrid,
   generateWaypoints,
+  optimizeFlightPlanStart,
 } from '@/features/flight-planner/utils/waypointCalculator'
 import type { FlightParams } from '@/features/flight-planner/types'
 
-export function useFlightCalculator(polygon: Feature<Polygon> | null, params: FlightParams) {
+export function useFlightCalculator(
+  polygon: Feature<Polygon> | null,
+  params: FlightParams,
+  routeStartRef: RouteStartRef | null,
+) {
   const debouncedParams = useDebounce(params, 400)
   const isCalculating = params !== debouncedParams
 
@@ -25,8 +31,21 @@ export function useFlightCalculator(polygon: Feature<Polygon> | null, params: Fl
     const gsdM = calculateGsd(debouncedParams.altitudeM, specs)
     const footprint = calculateFootprint(gsdM, specs)
     const spacings = calculateSpacings(footprint, debouncedParams.forwardOverlap, debouncedParams.sideOverlap)
-    const strips = generateFlightGrid(polygon, spacings, debouncedParams.rotationDeg)
-    const waypoints = generateWaypoints(strips, debouncedParams.altitudeM)
+
+    const { strips, waypoints } =
+      routeStartRef != null
+        ? optimizeFlightPlanStart(
+            polygon,
+            spacings,
+            debouncedParams.rotationDeg,
+            debouncedParams.altitudeM,
+            routeStartRef,
+          )
+        : (() => {
+            const s = generateFlightGrid(polygon, spacings, debouncedParams.rotationDeg)
+            return { strips: s, waypoints: generateWaypoints(s, debouncedParams.altitudeM) }
+          })()
+
     const stats = calculateStats(waypoints, polygon, debouncedParams, strips)
 
     return {
@@ -35,7 +54,7 @@ export function useFlightCalculator(polygon: Feature<Polygon> | null, params: Fl
       stats,
       isCalculating,
     }
-  }, [debouncedParams, isCalculating, polygon])
+  }, [debouncedParams, isCalculating, polygon, routeStartRef])
 
   return result
 }

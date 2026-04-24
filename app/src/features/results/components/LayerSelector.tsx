@@ -14,7 +14,7 @@ const labels: Record<ResultLayerId, string> = {
 
 export function LayerSelector({ activeLayer, onChange }: LayerSelectorProps) {
   return (
-    <div className="inline-flex rounded-full border border-neutral-800 bg-neutral-950 p-1">
+    <div className="inline-flex flex-wrap rounded-full border border-[#2e2e2e] bg-[#0f0f0f] p-1">
       {(Object.keys(labels) as ResultLayerId[]).map((layer) => (
         <button
           key={layer}
@@ -22,7 +22,9 @@ export function LayerSelector({ activeLayer, onChange }: LayerSelectorProps) {
           onClick={() => onChange(layer)}
           className={[
             'rounded-full px-3 py-1 text-xs transition',
-            layer === activeLayer ? 'bg-primary-500/15 text-primary-300' : 'text-neutral-400 hover:text-neutral-200',
+            layer === activeLayer
+              ? 'bg-[rgba(62,207,142,0.12)] text-[#3ecf8e]'
+              : 'text-[#898989] hover:text-[#fafafa]',
           ].join(' ')}
         >
           {labels[layer]}

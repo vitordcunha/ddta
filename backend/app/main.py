@@ -11,7 +11,7 @@ from app.config import settings
 from app.utils.rate_limit import limiter
 from app.utils.errors import register_exception_handlers
 
-logger = logging.getLogger("uvicorn.access")
+logger = logging.getLogger("app.requests")
 
 app = FastAPI(title=settings.app_name)
 app.state.limiter = limiter
