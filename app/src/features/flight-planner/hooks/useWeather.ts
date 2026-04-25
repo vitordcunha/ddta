@@ -1,5 +1,9 @@
 import { useCallback, useState } from 'react'
-import { assessFlightConditions } from '@/features/flight-planner/utils/weatherHelpers'
+import {
+  assessFlightConditions,
+  WEATHER_UNAVAILABLE_DETAIL,
+  WEATHER_UNAVAILABLE_HEADLINE,
+} from '@/features/flight-planner/utils/weatherHelpers'
 import type { DroneModel, FlightAssessment, WeatherData } from '@/features/flight-planner/types'
 import { weatherService } from '@/services/weatherService'
 
@@ -17,7 +21,9 @@ export function useWeather(droneModel: DroneModel, altitudeM: number) {
       setWeather(current)
       setAssessment(assessFlightConditions(current, droneModel, altitudeM))
     } catch {
-      setError('Falha ao carregar clima em tempo real.')
+      setWeather(null)
+      setAssessment(null)
+      setError(`${WEATHER_UNAVAILABLE_HEADLINE}. ${WEATHER_UNAVAILABLE_DETAIL}`)
     } finally {
       setIsLoading(false)
     }

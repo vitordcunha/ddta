@@ -1,6 +1,27 @@
 import { getDroneSpec } from '@/features/flight-planner/utils/droneSpecs'
 import type { DroneModel, FlightAssessment, WeatherData } from '@/features/flight-planner/types'
 
+/** Mensagem quando Open-Meteo ou a rede falham (planeamento offline continua válido). */
+export const WEATHER_UNAVAILABLE_HEADLINE = 'Clima indisponível'
+
+export const WEATHER_UNAVAILABLE_DETAIL =
+  'Não foi possível obter dados em tempo real. Cálculo de waypoints e exportação KMZ funcionam sem internet.'
+
+export function isWeatherUnavailableCopy(text: string | null | undefined): boolean {
+  return Boolean(text?.includes(WEATHER_UNAVAILABLE_HEADLINE))
+}
+
+/**
+ * Cobertura nublada aproximada a partir do codigo WMO quando a API nao envia `cloud_cover` por hora.
+ * Mesma heuristica usada em `weatherService` para o instante atual.
+ */
+export function wmoCodeToEstimatedCloudPct(code: number): number {
+  if (code === 0 || code === 1) return 10
+  if (code === 2) return 35
+  if (code === 3) return 75
+  return 90
+}
+
 /** Descricao curta do codigo WMO (Open-Meteo). */
 export function wmoCodeToConditionPt(code: number): string {
   if (code === 0) return 'Ce limpo'

@@ -6,14 +6,23 @@ interface StartProcessingPanelProps {
   selectedPreset: ProcessingPreset
   onSelectPreset: (preset: ProcessingPreset) => void
   onStart: () => void
+  /** Apos uma falha — textos e botao de nova tentativa. */
+  isRetry?: boolean
 }
 
-export function StartProcessingPanel({ selectedPreset, onSelectPreset, onStart }: StartProcessingPanelProps) {
+export function StartProcessingPanel({ selectedPreset, onSelectPreset, onStart, isRetry }: StartProcessingPanelProps) {
   const details = processingPresets[selectedPreset]
 
   return (
     <Card className="space-y-4">
-      <h3 className="text-base font-semibold text-neutral-100">Iniciar processamento</h3>
+      <h3 className="text-base font-semibold text-neutral-100">
+        {isRetry ? 'Tentar novamente' : 'Iniciar processamento'}
+      </h3>
+      {isRetry ? (
+        <p className="text-sm text-neutral-500">
+          O processamento anterior nao foi concluido. Ajuste as imagens ou o preset e reexecute.
+        </p>
+      ) : null}
       <div className="grid gap-2">
         {(Object.keys(processingPresets) as ProcessingPreset[]).map((preset) => {
           const data = processingPresets[preset]
@@ -41,7 +50,7 @@ export function StartProcessingPanel({ selectedPreset, onSelectPreset, onStart }
       </div>
 
       <Button className="w-full" onClick={onStart}>
-        Iniciar processamento
+        {isRetry ? 'Tentar novamente' : 'Iniciar processamento'}
       </Button>
     </Card>
   )

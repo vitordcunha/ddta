@@ -1,9 +1,20 @@
 import JSZip from 'jszip'
 import type { FlightParams, Waypoint } from '@/features/flight-planner/types'
 
+export type KmzVariant = 'full' | 'calibration'
+
 type KmlParams = {
   projectName: string
   params: FlightParams
+  /** Missão completa ou recorte de calibração (nome e descrição no KML/WPML). */
+  variant?: KmzVariant
+}
+
+function missionDisplayName(projectName: string, variant: KmzVariant | undefined): string {
+  if (variant === 'calibration') {
+    return `${projectName} — Calibração`
+  }
+  return projectName
 }
 
 export function buildTemplateKml(waypoints: Waypoint[], payload: KmlParams): string {
@@ -19,11 +30,12 @@ export function buildTemplateKml(waypoints: Waypoint[], payload: KmlParams): str
     )
     .join('\n')
 
+  const display = missionDisplayName(payload.projectName, payload.variant)
   return `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
   <Document>
-    <name>${payload.projectName} - Template</name>
-    <description>Drone: ${payload.params.droneModel}</description>
+    <name>${display} - Template</name>
+    <description>Drone: ${payload.params.droneModel}${payload.variant === 'calibration' ? ' | Voo de calibração' : ''}</description>
     ${placemarks}
   </Document>
 </kml>`
@@ -43,10 +55,11 @@ export function buildWaylinesWpml(waypoints: Waypoint[], payload: KmlParams): st
     )
     .join('\n')
 
+  const display = missionDisplayName(payload.projectName, payload.variant)
   return `<?xml version="1.0" encoding="UTF-8"?>
 <wpml:wayline xmlns:wpml="http://www.dji.com/wpmz/1.0.0">
   <wpml:missionConfig>
-    <wpml:name>${payload.projectName}</wpml:name>
+    <wpml:name>${display}</wpml:name>
     <wpml:droneModel>${payload.params.droneModel}</wpml:droneModel>
   </wpml:missionConfig>
   <wpml:waypoints>

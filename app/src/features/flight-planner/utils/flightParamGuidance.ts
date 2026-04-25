@@ -83,6 +83,44 @@ export type FlightConfigNotice = {
 }
 
 /**
+ * Estimativa de precisao posicional esperada (RMSE) sem GCP.
+ * Baseado em literatura de fotogrametria UAV empirica.
+ */
+export function estimatePrecision(gsdCm: number): { xyMinCm: number; xyMaxCm: number; zMinCm: number; zMaxCm: number } {
+  return {
+    xyMinCm: parseFloat((1.5 * gsdCm).toFixed(1)),
+    xyMaxCm: parseFloat((2.5 * gsdCm).toFixed(1)),
+    zMinCm: parseFloat((2.5 * gsdCm).toFixed(1)),
+    zMaxCm: parseFloat((4.0 * gsdCm).toFixed(1)),
+  }
+}
+
+/**
+ * Estima o motion blur em pixels com base em velocidade, GSD e tempo de exposicao tipico.
+ */
+export function estimateMotionBlurPx(speedMs: number, gsdCm: number, altitudeM: number): number {
+  const gsdM = gsdCm / 100
+  // Shutter tipico em auto ISO no DJI: mais alto = mais exposto, mais baixo = mais travado
+  const estimatedShutterS =
+    altitudeM > 120 ? 1 / 800 :
+    altitudeM > 60  ? 1 / 1200 :
+                      1 / 2000
+  return (speedMs * estimatedShutterS) / Math.max(gsdM, 0.004)
+}
+
+/**
+ * Velocidade maxima para manter blur abaixo de 0.5 px (limite seguro).
+ */
+export function safeSpeedMsForBlur(gsdCm: number, altitudeM: number): number {
+  const gsdM = gsdCm / 100
+  const shutterS =
+    altitudeM > 120 ? 1 / 800 :
+    altitudeM > 60  ? 1 / 1200 :
+                      1 / 2000
+  return Math.floor((0.5 * gsdM) / shutterS * 10) / 10
+}
+
+/**
  * Avisos e dicas com base nos parametros (e estatisticas quando ja calculadas).
  */
 export function analyzeFlightConfiguration(
@@ -180,6 +218,21 @@ export function analyzeFlightConfiguration(
     notices.push({
       severity: 'info',
       text: 'Sobreposicao muito alta: excelente redundancia, mas missao longa e possivel desfocagem por vento entre disparos — avalie se e necessario.',
+    })
+  }
+
+  // Motion blur estimate
+  const blurPx = estimateMotionBlurPx(params.speedMs, gsdCm, params.altitudeM)
+  const safeSpeed = safeSpeedMsForBlur(gsdCm, params.altitudeM)
+  if (blurPx > 1.5) {
+    notices.push({
+      severity: 'error',
+      text: `Motion blur severo estimado (~${blurPx.toFixed(1)} px): com este GSD e velocidade o drone provavelmente producira fotos borradas. Reduza para ≤${safeSpeed} m/s ou use shutter mais rapido no app da camera.`,
+    })
+  } else if (blurPx > 0.65) {
+    notices.push({
+      severity: 'warning',
+      text: `Motion blur detectavel estimado (~${blurPx.toFixed(1)} px): velocidade ideal para este GSD seria ≤${safeSpeed} m/s. Considere travar o shutter em 1/1000s ou mais no modo de camera.`,
     })
   }
 

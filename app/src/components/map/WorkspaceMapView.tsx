@@ -6,6 +6,8 @@ import { FlightPlannerMapContent } from '@/features/flight-planner/components/Fl
 import { ResultsMapInnerLayers } from '@/features/results/components/ResultsMapLayers'
 import type { WorkspacePanelId } from '@/constants/routes'
 import { MapBootstrapView } from '@/components/map/MapBootstrapView'
+import { PlannerWeatherMapLayers } from '@/components/map/PlannerWeatherMapLayers'
+import type { WorkspaceMapWeatherTilesProps } from '@/components/map/useWorkspaceMapWeather'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import { useMapBootstrapFocus } from '@/hooks/useMapBootstrapFocus'
 import 'leaflet/dist/leaflet.css'
@@ -17,20 +19,28 @@ const DEFAULT_MAP_ZOOM = 15
 type WorkspaceMapViewProps = {
   panel: WorkspacePanelId
   projectId: string | null
+  weatherTiles: WorkspaceMapWeatherTilesProps
 }
 
-export function WorkspaceMapView({ panel, projectId }: WorkspaceMapViewProps) {
+export function WorkspaceMapView({ panel, projectId, weatherTiles }: WorkspaceMapViewProps) {
   const showPlan = panel === 'plan' && Boolean(projectId)
   const showResults = panel === 'results' && Boolean(projectId)
   const { position, error, phase, locate } = useGeolocation()
   const bootstrapFocus = useMapBootstrapFocus({ locate })
-
   const bottomLeftControls = (
     <MapBottomLeftControls
       position={position}
       error={error}
       phase={phase}
       locate={locate}
+    />
+  )
+
+  const weatherTileLayers = (
+    <PlannerWeatherMapLayers
+      overlay={weatherTiles.overlay}
+      openWeatherApiKey={weatherTiles.openWeatherApiKey}
+      onRadarStatus={weatherTiles.onRadarStatus}
     />
   )
 
@@ -47,11 +57,13 @@ export function WorkspaceMapView({ panel, projectId }: WorkspaceMapViewProps) {
         {showResults ? (
           <>
             <ResultsMapInnerLayers />
+            {weatherTileLayers}
             {bottomLeftControls}
           </>
         ) : (
           <>
             <PlannerMapBaseLayer />
+            {weatherTileLayers}
             {showPlan ? (
               <>
                 <FlightPlannerCalculationBridge />

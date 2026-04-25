@@ -65,6 +65,28 @@ body {
   overscroll-behavior: none;
 }
 
+/* Numeração da pré-visualização de calibração (DivIcon no planejador) */
+.leaflet-div-icon.calibration-photo-order-leaflet-icon {
+  background: transparent !important;
+  border: none !important;
+}
+
+.calibration-photo-order-leaflet-icon .calibration-photo-order-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 9999px;
+  box-sizing: border-box;
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
 .skeleton {
   @apply animate-pulse rounded-md bg-neutral-800;
 }
@@ -92,6 +114,6 @@ body {
   }
 
   .textarea-base {
-    @apply min-h-28 w-full rounded-lg border border-neutral-800 bg-neutral-950 p-3 text-sm text-neutral-100 outline-none transition placeholder:text-neutral-500 focus-visible:border-primary-500;
+    @apply min-h-28 w-full resize-none rounded-lg border border-neutral-800 bg-neutral-950 p-3 text-sm text-neutral-100 outline-none transition placeholder:text-neutral-500 focus-visible:border-primary-500;
   }
 }

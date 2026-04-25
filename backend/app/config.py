@@ -18,9 +18,15 @@ class Settings(BaseSettings):
     s3_region_name: str = "us-east-1"
     s3_bucket: str = "dronedata"
     max_upload_file_size_mb: int = 1024
+    calibration_min_images: int = 5
+    calibration_max_images: int = 30
+    calibration_max_jpeg_mb: int = 40
+    calibration_pixel_thumb_max_px: int = 1280
+    calibration_pixel_jpeg_quality: int = 82
     rate_limit_upload: str = "120/minute"
     rate_limit_processing: str = "20/minute"
-    cors_origins: str = "http://localhost:5173,http://localhost:3000"
+    # Use "*" to allow any Origin (reflected in responses; works with credentials).
+    cors_origins: str = "*"
 
     model_config = SettingsConfigDict(
         env_file=".env",

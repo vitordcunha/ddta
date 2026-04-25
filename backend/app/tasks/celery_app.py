@@ -14,3 +14,7 @@ celery_app.conf.update(
 )
 
 celery_app.autodiscover_tasks(["app.tasks"])
+
+# Ensure workers register tasks without importing the FastAPI app first.
+import app.tasks.calibration_tasks  # noqa: E402, F401
+import app.tasks.processing_tasks  # noqa: E402, F401

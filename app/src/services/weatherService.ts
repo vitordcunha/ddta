@@ -1,5 +1,5 @@
 import type { WeatherData, WeatherForecastHour } from '@/features/flight-planner/types'
-import { wmoCodeToConditionPt } from '@/features/flight-planner/utils/weatherHelpers'
+import { wmoCodeToConditionPt, wmoCodeToEstimatedCloudPct } from '@/features/flight-planner/utils/weatherHelpers'
 
 type OpenMeteoResponse = {
   current?: {
@@ -24,13 +24,6 @@ type OpenMeteoResponse = {
     precipitation?: number[]
     weather_code?: number[]
   }
-}
-
-function weatherCodeToCloudCoverFallback(weatherCode: number): number {
-  if (weatherCode === 0 || weatherCode === 1) return 10
-  if (weatherCode === 2) return 35
-  if (weatherCode === 3) return 75
-  return 90
 }
 
 function isPrecipitatingNow(
@@ -119,7 +112,7 @@ export const weatherService = {
     const cloudFromApi = current.cloud_cover
     const cloudCoveragePct = Number.isFinite(Number(cloudFromApi))
       ? Math.round(Number(cloudFromApi))
-      : weatherCodeToCloudCoverFallback(weatherCode)
+      : wmoCodeToEstimatedCloudPct(weatherCode)
 
     const rain = Number(current.rain ?? 0)
     const showers = Number(current.showers ?? 0)

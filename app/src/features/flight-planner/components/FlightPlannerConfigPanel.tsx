@@ -1,60 +1,178 @@
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
-import * as turf from '@turf/turf'
 import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { toast } from "sonner";
+import * as turf from "@turf/turf";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  Battery,
+  Camera,
   Check,
+  ChevronDown,
+  Clock,
   Cloud,
   CloudRain,
   Compass,
   Download,
   Droplets,
+  Focus,
   Gauge,
   Info,
   Loader2,
   MapPin,
+  Maximize2,
   Moon,
+  Navigation,
+  Ruler,
   Sun,
   Thermometer,
+  Trash2,
   TriangleAlert,
   Umbrella,
   Wind,
-} from 'lucide-react'
-import { Badge, Button, Card } from '@/components/ui'
-import { useKmzExport } from '@/features/flight-planner/hooks/useKmzExport'
-import { useWeather } from '@/features/flight-planner/hooks/useWeather'
-import { getDroneOptions } from '@/features/flight-planner/utils/droneSpecs'
+  Zap,
+} from "lucide-react";
+import { Badge, Button, Card } from "@/components/ui";
+import { cn } from "@/lib/utils";
+import { DroneIllustration } from "@/features/flight-planner/components/DroneIllustration";
+import { getDroneSpec } from "@/features/flight-planner/utils/droneSpecs";
+import { CalibrationUploadDialog } from "@/features/flight-planner/components/CalibrationUploadDialog";
+import { PreFlightChecklistModal } from "@/features/flight-planner/components/PreFlightChecklistModal";
+import { useKmzExport } from "@/features/flight-planner/hooks/useKmzExport";
+import { usePlatform } from "@/hooks/usePlatform";
+import { KmzTransferNative } from "@/features/flight-planner/components/KmzTransferNative";
+import { generateKmz } from "@/features/flight-planner/utils/kmzBuilder";
+import { buildCalibrationMission } from "@/features/flight-planner/utils/calibrationPlan";
+import { useWeather } from "@/features/flight-planner/hooks/useWeather";
+import { getDroneOptions } from "@/features/flight-planner/utils/droneSpecs";
 import {
+  buildSolarFlightContextLines,
+  computeSolarFlightWindowSectionRisk,
+  getSolarArcIllustrationDot,
+  type PlannerSectionRisk,
+} from "@/features/flight-planner/utils/solarPosition";
+import {
+  isWeatherUnavailableCopy,
   windDegToCompass,
   wmoCodeToConditionPt,
-} from '@/features/flight-planner/utils/weatherHelpers'
-import { useFlightStore } from '@/features/flight-planner/stores/useFlightStore'
-import type { PersistedFlightPlan } from '@/features/flight-planner/stores/useFlightStore'
+} from "@/features/flight-planner/utils/weatherHelpers";
+import { useFlightStore } from "@/features/flight-planner/stores/useFlightStore";
+import type { PersistedFlightPlan } from "@/features/flight-planner/stores/useFlightStore";
 import {
   clearFlightPlanDraft,
   readFlightPlanDraft,
   writeFlightPlanDraft,
-} from '@/features/flight-planner/utils/flightPlanDraftStorage'
-import { useGeolocation } from '@/hooks/useGeolocation'
+} from "@/features/flight-planner/utils/flightPlanDraftStorage";
+import {
+  readPreFlightKmzModalSkip,
+  writePreFlightKmzModalSkip,
+} from "@/features/flight-planner/utils/preFlightChecklistStorage";
+import { useGeolocation } from "@/hooks/useGeolocation";
+import {
+  projectsService,
+  type CalibrationSessionListItem,
+} from "@/services/projectsService";
 import {
   analyzeFlightConfiguration,
   detectActiveQualityPreset,
   estimateGsdCmFromParams,
+  estimatePrecision,
   FLIGHT_QUALITY_PRESETS,
   presetParamsFor,
-} from '@/features/flight-planner/utils/flightParamGuidance'
-import type { FlightQualityPresetId } from '@/features/flight-planner/utils/flightParamGuidance'
+} from "@/features/flight-planner/utils/flightParamGuidance";
+import type { FlightQualityPresetId } from "@/features/flight-planner/utils/flightParamGuidance";
+import {
+  calculateOptimalRotation,
+  calculateFootprint,
+  calculateGsd,
+  calculateSpacings,
+} from "@/features/flight-planner/utils/waypointCalculator";
+import { FlightQualityScoreBadge } from "@/features/flight-planner/components/FlightQualityScoreBadge";
+import { useCalibrationSession } from "@/features/flight-planner/hooks/useCalibrationSession";
 
 type Props = {
-  projectName: string
-  projectId: string
-  initialPlan: PersistedFlightPlan | null
-  onSavePlan: (plan: PersistedFlightPlan) => void | Promise<void>
-}
+  projectName: string;
+  projectId: string;
+  initialPlan: PersistedFlightPlan | null;
+  onSavePlan: (plan: PersistedFlightPlan) => void | Promise<void>;
+};
 
 const format = {
-  number: (value: number, digits = 1) => value.toFixed(digits).replace('.', ','),
+  number: (value: number, digits = 1) =>
+    value.toFixed(digits).replace(".", ","),
+};
+
+function PlannerCollapsibleCard({
+  title,
+  startsExpanded,
+  riskLevel,
+  leadingIcon,
+  children,
+}: {
+  title: string;
+  startsExpanded: boolean;
+  riskLevel: PlannerSectionRisk;
+  leadingIcon?: ReactNode;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(startsExpanded);
+  useLayoutEffect(() => {
+    if (riskLevel === "danger") setOpen(true);
+  }, [riskLevel]);
+  return (
+    <Card className="glass-card overflow-hidden p-0">
+      <button
+        type="button"
+        className="flex w-full items-center gap-2 px-4 py-3 text-left transition-colors hover:bg-white/[0.04]"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+      >
+        <ChevronDown
+          className={cn(
+            "size-4 shrink-0 text-neutral-500 transition-transform duration-200",
+            open && "rotate-180",
+          )}
+          aria-hidden
+        />
+        {leadingIcon ? (
+          <span className="shrink-0 text-neutral-400 [&_svg]:size-4">
+            {leadingIcon}
+          </span>
+        ) : null}
+        <span className="min-w-0 flex-1 text-sm font-medium text-neutral-200">
+          {title}
+        </span>
+        {riskLevel !== "none" ? (
+          <TriangleAlert
+            className={cn(
+              "size-3.5 shrink-0",
+              riskLevel === "danger" ? "text-red-400" : "text-amber-400",
+            )}
+            aria-label={riskLevel === "danger" ? "Risco" : "Aviso"}
+          />
+        ) : null}
+      </button>
+      {open ? (
+        <div className="space-y-3 border-t border-white/[0.08] px-4 pb-4 pt-3">
+          {children}
+        </div>
+      ) : null}
+    </Card>
+  );
 }
 
-export function FlightPlannerConfigPanel({ projectName, projectId, initialPlan, onSavePlan }: Props) {
+export function FlightPlannerConfigPanel({
+  projectName,
+  projectId,
+  initialPlan,
+  onSavePlan,
+}: Props) {
   const {
     polygon,
     params,
@@ -69,40 +187,117 @@ export function FlightPlannerConfigPanel({ projectName, projectId, initialPlan, 
     resetPlan,
     routeStartRef,
     setRouteStartRef,
-  } = useFlightStore()
-  const { locate, phase: geoPhase, error: geoError } = useGeolocation()
-  const weatherQuery = useWeather(params.droneModel, params.altitudeM)
-  const kmzExport = useKmzExport(projectName)
-  const [saving, setSaving] = useState(false)
+    plannerBaseLayer,
+    calibrationSessionId,
+    setCalibrationSessionId,
+    calibrationMapPreviewActive,
+    setCalibrationMapPreviewActive,
+    setPlannerInteractionMode,
+  } = useFlightStore();
+  const { locate, position: geoPosition, phase: geoPhase, error: geoError } = useGeolocation();
+  const weatherQuery = useWeather(params.droneModel, params.altitudeM);
+  const kmzExport = useKmzExport(projectName);
+  const kmzCalibExport = useKmzExport(projectName);
+  const platform = usePlatform();
+  const [nativeKmzOpen, setNativeKmzOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [preFlightOpen, setPreFlightOpen] = useState(false);
+  const [preFlightKey, setPreFlightKey] = useState(0);
+  const [preFlightFlow, setPreFlightFlow] = useState<
+    "mission" | "calibration"
+  >("mission");
+  const [, bumpKmzStorageRead] = useState(0);
+  const skipKmzPreFlight = readPreFlightKmzModalSkip(projectId);
+  const [calibrationSessions, setCalibrationSessions] = useState<
+    CalibrationSessionListItem[]
+  >([]);
+  const [calibrationUploadOpen, setCalibrationUploadOpen] = useState(false);
+  const [calibrationSessionRevision, setCalibrationSessionRevision] =
+    useState(0);
+  const { session: activeCalibrationSession } = useCalibrationSession(
+    calibrationSessionId,
+    Boolean(calibrationSessionId),
+    calibrationSessionRevision,
+  );
+
+  // Snapshot dos params no momento em que a sessao de calibracao foi vinculada.
+  // Usado para detectar se params criticos mudaram desde a calibracao.
+  const calibrationParamsSnapshotRef = useRef<Pick<
+    typeof params,
+    "altitudeM" | "forwardOverlap" | "sideOverlap"
+  > | null>(null);
+  useEffect(() => {
+    if (calibrationSessionId) {
+      calibrationParamsSnapshotRef.current = {
+        altitudeM: params.altitudeM,
+        forwardOverlap: params.forwardOverlap,
+        sideOverlap: params.sideOverlap,
+      };
+    } else {
+      calibrationParamsSnapshotRef.current = null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calibrationSessionId]);
+
+  const calibrationOutdated = useMemo(() => {
+    const snap = calibrationParamsSnapshotRef.current;
+    if (!snap || !calibrationSessionId) return false;
+    const altDiff = Math.abs(params.altitudeM - snap.altitudeM)
+    const fwdDiff = Math.abs(params.forwardOverlap - snap.forwardOverlap)
+    const sideDiff = Math.abs(params.sideOverlap - snap.sideOverlap)
+    return altDiff > 10 || fwdDiff > 5 || sideDiff > 5
+  }, [
+    calibrationSessionId,
+    params.altitudeM,
+    params.forwardOverlap,
+    params.sideOverlap,
+  ]);
+
+  const [deletingCalibrationSessionId, setDeletingCalibrationSessionId] =
+    useState<string | null>(null);
+  const [solarNow, setSolarNow] = useState(() => new Date());
+
+  const loadCalibrationSessions = useCallback(async () => {
+    try {
+      const rows = await projectsService.listCalibrationSessions(projectId);
+      setCalibrationSessions(rows);
+    } catch {
+      setCalibrationSessions([]);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    void loadCalibrationSessions();
+  }, [loadCalibrationSessions]);
   const {
     fetchWeather,
     weather: currentWeather,
     assessment: currentAssessment,
     isLoading: isWeatherLoading,
     error: weatherError,
-  } = weatherQuery
+  } = weatherQuery;
 
   useEffect(() => {
-    const fromDraft = readFlightPlanDraft(projectId)
+    const fromDraft = readFlightPlanDraft(projectId);
     if (fromDraft) {
-      loadPlan(fromDraft)
-      return
+      loadPlan(fromDraft);
+      return;
     }
     if (initialPlan) {
-      loadPlan(initialPlan)
+      loadPlan(initialPlan);
     } else {
-      resetPlan()
+      resetPlan();
     }
-  }, [projectId, initialPlan, loadPlan, resetPlan])
+  }, [projectId, initialPlan, loadPlan, resetPlan]);
 
   useEffect(() => {
-    let t: ReturnType<typeof setTimeout> | undefined
+    let t: ReturnType<typeof setTimeout> | undefined;
     const sub = useFlightStore.subscribe((state) => {
-      if (t) clearTimeout(t)
+      if (t) clearTimeout(t);
       t = setTimeout(() => {
         if (!state.polygon && state.waypoints.length === 0) {
-          clearFlightPlanDraft(projectId)
-          return
+          clearFlightPlanDraft(projectId);
+          return;
         }
         writeFlightPlanDraft(projectId, {
           polygon: state.polygon,
@@ -111,44 +306,117 @@ export function FlightPlannerConfigPanel({ projectName, projectId, initialPlan, 
           stats: state.stats,
           weather: state.weather,
           assessment: state.assessment,
-        })
-      }, 300)
-    })
+          calibrationSessionId: state.calibrationSessionId,
+        });
+      }, 300);
+    });
     return () => {
-      if (t) clearTimeout(t)
-      sub()
-    }
-  }, [projectId])
+      if (t) clearTimeout(t);
+      sub();
+    };
+  }, [projectId]);
+
+  const polygonCenter = useMemo(() => {
+    if (!polygon) return null;
+    const c = turf.centerOfMass(polygon).geometry.coordinates;
+    return { lat: c[1], lon: c[0] };
+  }, [polygon]);
 
   useEffect(() => {
-    if (!polygon) return
-    const center = turf.centerOfMass(polygon).geometry.coordinates
-    void fetchWeather(center[1], center[0])
-  }, [fetchWeather, polygon])
+    if (!polygonCenter) return;
+    setSolarNow(new Date());
+    const id = window.setInterval(() => setSolarNow(new Date()), 60_000);
+    return () => window.clearInterval(id);
+  }, [polygonCenter?.lat, polygonCenter?.lon]);
+
+  const calibrationMission = useMemo(() => {
+    if (!polygon) return null;
+    return buildCalibrationMission(polygon, params, routeStartRef);
+  }, [polygon, params, routeStartRef]);
+
+  const solarPanelLines = useMemo(() => {
+    if (!polygonCenter) return null;
+    return buildSolarFlightContextLines({
+      lat: polygonCenter.lat,
+      lon: polygonCenter.lon,
+      now: solarNow,
+      weather: currentWeather,
+      droneModel: params.droneModel,
+    });
+  }, [polygonCenter, currentWeather, params.droneModel, solarNow]);
+
+  const solarSectionRisk = useMemo((): PlannerSectionRisk => {
+    if (!polygonCenter) return "none";
+    return computeSolarFlightWindowSectionRisk({
+      lat: polygonCenter.lat,
+      lon: polygonCenter.lon,
+      now: solarNow,
+      weather: currentWeather,
+      droneModel: params.droneModel,
+    });
+  }, [polygonCenter, solarNow, currentWeather, params.droneModel]);
+
+  const weatherSectionRisk = useMemo((): PlannerSectionRisk => {
+    if (isWeatherLoading) return "none";
+    if (currentAssessment && !currentAssessment.go) return "danger";
+    if (currentAssessment?.issues?.length) return "danger";
+    if (weatherError && !isWeatherUnavailableCopy(weatherError))
+      return "danger";
+    if (weatherError && isWeatherUnavailableCopy(weatherError))
+      return "warning";
+    if (currentAssessment?.warnings?.length) return "warning";
+    return "none";
+  }, [isWeatherLoading, currentAssessment, weatherError]);
 
   useEffect(() => {
-    setWeather(currentWeather, currentAssessment)
-  }, [currentAssessment, currentWeather, setWeather])
+    if (!polygon) return;
+    const center = turf.centerOfMass(polygon).geometry.coordinates;
+    void fetchWeather(center[1], center[0]);
+  }, [fetchWeather, polygon]);
 
-  const hasPlan = Boolean(polygon && waypoints.length > 0 && stats)
+  useEffect(() => {
+    setWeather(currentWeather, currentAssessment);
+  }, [currentAssessment, currentWeather, setWeather]);
 
-  const activeQualityPreset = useMemo(() => detectActiveQualityPreset(params), [params])
+  const hasPlan = Boolean(polygon && waypoints.length > 0 && stats);
+
+  const activeQualityPreset = useMemo(
+    () => detectActiveQualityPreset(params),
+    [params],
+  );
 
   const configNotices = useMemo(
     () =>
       analyzeFlightConfiguration(
         params,
-        stats ? { gsdCm: stats.gsdCm, estimatedPhotos: stats.estimatedPhotos } : null,
+        stats
+          ? { gsdCm: stats.gsdCm, estimatedPhotos: stats.estimatedPhotos }
+          : null,
       ),
     [params, stats],
-  )
+  );
 
   const applyQualityPreset = (id: FlightQualityPresetId) => {
-    setParams(presetParamsFor(id))
-  }
+    setParams(presetParamsFor(id));
+  };
+
+  const onRequestKmzDownload = () => {
+    if (skipKmzPreFlight) {
+      void kmzExport.generateAndDownload(waypoints, params);
+    } else {
+      setPreFlightFlow("mission");
+      setPreFlightKey((k) => k + 1);
+      setPreFlightOpen(true);
+    }
+  };
+
+  const buildFlightKmzArrayBuffer = useCallback(async () => {
+    const blob = await generateKmz(waypoints, { projectName, params });
+    return await blob.arrayBuffer();
+  }, [params, projectName, waypoints]);
 
   const saveCurrentPlan = async () => {
-    if (saving) return
+    if (saving) return;
     const plan: PersistedFlightPlan = {
       polygon,
       params,
@@ -156,38 +424,183 @@ export function FlightPlannerConfigPanel({ projectName, projectId, initialPlan, 
       stats,
       weather,
       assessment,
-    }
-    setSaving(true)
+      calibrationSessionId,
+    };
+    setSaving(true);
     try {
-      await Promise.resolve(onSavePlan(plan))
+      await Promise.resolve(onSavePlan(plan));
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }
+  };
+
+  const droneSpec = getDroneSpec(params.droneModel);
 
   return (
     <div className="space-y-3">
-      <Card className="glass-card space-y-3">
-        <h3 className="text-sm font-medium text-neutral-200">Parametros de voo</h3>
+      {/* Drone card */}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={params.droneModel}
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.25 }}
+        >
+          <Card className="glass-card overflow-hidden p-0">
+            <div className="relative flex items-center gap-4 px-4 py-3">
+              {/* Subtle gradient background */}
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary-500/[0.07] via-transparent to-transparent" />
+              {/* Drone illustration */}
+              <div className="relative shrink-0">
+                <div className="flex h-20 w-20 items-center justify-center rounded-xl bg-white/[0.04] ring-1 ring-white/[0.08]">
+                  {droneSpec.image ? (
+                    <img
+                      src={droneSpec.image}
+                      alt={params.droneModel}
+                      className="w-full h-full object-contain"
+                    />
+                  ) : (
+                    <DroneIllustration model={params.droneModel} />
+                  )}
+                </div>
+              </div>
+              {/* Model info */}
+              <div className="min-w-0 flex-1 space-y-2">
+                <div>
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-neutral-500">
+                    Drone selecionado
+                  </p>
+                  <h2 className="text-base font-semibold tracking-tight text-white">
+                    {params.droneModel}
+                  </h2>
+                </div>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                  <span className="flex items-center gap-1 text-neutral-400">
+                    <Battery className="size-3 text-primary-400/80" />
+                    <span className="text-neutral-200">
+                      {droneSpec.batteryTimeMin} min
+                    </span>
+                  </span>
+                  <span className="flex items-center gap-1 text-neutral-400">
+                    <Zap className="size-3 text-amber-400/80" />
+                    <span className="text-neutral-200">
+                      {droneSpec.maxSpeedMs} m/s máx
+                    </span>
+                  </span>
+                  <span className="flex items-center gap-1 text-neutral-400">
+                    <Camera className="size-3 text-sky-400/80" />
+                    <span className="text-neutral-200">
+                      {(
+                        (droneSpec.imageWidthPx * droneSpec.imageHeightPx) /
+                        1_000_000
+                      ).toFixed(0)}{" "}
+                      MP
+                    </span>
+                  </span>
+                  <span className="flex items-center gap-1 text-neutral-400">
+                    <Focus className="size-3 text-violet-400/80" />
+                    <span className="text-neutral-200">
+                      {droneSpec.focalLengthMm} mm
+                    </span>
+                  </span>
+                </div>
+              </div>
+            </div>
+          </Card>
+        </motion.div>
+      </AnimatePresence>
+
+      <PlannerCollapsibleCard
+        title="Inicio da rota"
+        startsExpanded
+        riskLevel="none"
+      >
+        <p className="text-[11px] leading-snug text-neutral-500">
+          Ajusta a ordem das faixas e o sentido do percurso para o primeiro
+          waypoint ficar o mais proximo possivel da sua posicao (GPS do
+          navegador).
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="inline-flex items-center gap-1.5"
+            disabled={!polygon || geoPhase === "loading"}
+            onClick={() => {
+              void locate().then((c) =>
+                setRouteStartRef({ lat: c.lat, lng: c.lng }),
+              );
+            }}
+          >
+            {geoPhase === "loading" ? (
+              <Loader2 className="size-3.5 animate-spin" aria-hidden />
+            ) : (
+              <MapPin className="size-3.5" aria-hidden />
+            )}
+            Usar minha posicao
+          </Button>
+          {routeStartRef ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setRouteStartRef(null)}
+            >
+              Ordem padrao
+            </Button>
+          ) : null}
+        </div>
+        {routeStartRef ? (
+          <p className="text-[11px] text-primary-300/90">
+            Otimizacao ativa: inicio proximo de {routeStartRef.lat.toFixed(5)},{" "}
+            {routeStartRef.lng.toFixed(5)}.
+          </p>
+        ) : null}
+        {geoError ? (
+          <p className="text-[11px] text-red-300/95">{geoError}</p>
+        ) : null}
+        {!polygon ? (
+          <p className="text-[11px] text-neutral-500">
+            Desenhe a area de voo no mapa para habilitar.
+          </p>
+        ) : null}
+      </PlannerCollapsibleCard>
+
+      <PlannerCollapsibleCard
+        title="Parametros de voo"
+        startsExpanded
+        riskLevel="none"
+      >
         <div className="flex gap-2 rounded-lg border border-white/10 bg-black/25 p-2.5 text-[11px] leading-snug text-neutral-400">
-          <Info className="mt-0.5 size-3.5 shrink-0 text-primary-400/90" aria-hidden />
+          <Info
+            className="mt-0.5 size-3.5 shrink-0 text-primary-400/90"
+            aria-hidden
+          />
           <div className="space-y-1.5">
             <p>
-              O <span className="text-neutral-300">GSD</span> (Ground Sampling Distance) e o tamanho do pixel no
-              solo: <span className="text-neutral-300">altura menor</span> aumenta o detalhe e o numero de fotos;{' '}
-              <span className="text-neutral-300">sobreposicao maior</span> melhora a costura do ortomosaico e modelos
-              3D, ao custo de tempo e bateria.
+              O <span className="text-neutral-300">GSD</span> (Ground Sampling
+              Distance) e o tamanho do pixel no solo:{" "}
+              <span className="text-neutral-300">altura menor</span> aumenta o
+              detalhe e o numero de fotos;{" "}
+              <span className="text-neutral-300">sobreposicao maior</span>{" "}
+              melhora a costura do ortomosaico e modelos 3D, ao custo de tempo e
+              bateria.
             </p>
             <p>
-              GSD estimado com este drone e altitude:{' '}
+              GSD estimado com este drone e altitude:{" "}
               <span className="font-mono text-neutral-200">
                 ~{format.number(estimateGsdCmFromParams(params), 2)} cm/px
               </span>
               {stats ? (
                 <>
-                  {' '}
-                  (calculado na area:{' '}
-                  <span className="font-mono text-neutral-200">{format.number(stats.gsdCm, 2)} cm/px</span>).
+                  {" "}
+                  (calculado na area:{" "}
+                  <span className="font-mono text-neutral-200">
+                    {format.number(stats.gsdCm, 2)} cm/px
+                  </span>
+                  ).
                 </>
               ) : null}
             </p>
@@ -195,14 +608,18 @@ export function FlightPlannerConfigPanel({ projectName, projectId, initialPlan, 
         </div>
 
         <div className="space-y-2">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">Perfil sugerido</p>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
+            Perfil sugerido
+          </p>
           <div className="flex flex-wrap gap-2">
             {FLIGHT_QUALITY_PRESETS.map((preset) => (
               <Button
                 key={preset.id}
                 type="button"
                 size="sm"
-                variant={activeQualityPreset === preset.id ? 'primary' : 'secondary'}
+                variant={
+                  activeQualityPreset === preset.id ? "primary" : "secondary"
+                }
                 className="text-xs"
                 onClick={() => applyQualityPreset(preset.id)}
               >
@@ -212,8 +629,9 @@ export function FlightPlannerConfigPanel({ projectName, projectId, initialPlan, 
           </div>
           <p className="text-[11px] leading-snug text-neutral-500">
             {activeQualityPreset
-              ? FLIGHT_QUALITY_PRESETS.find((p) => p.id === activeQualityPreset)?.short
-              : 'Valores personalizados: use os sliders e observe o GSD e os avisos abaixo.'}
+              ? FLIGHT_QUALITY_PRESETS.find((p) => p.id === activeQualityPreset)
+                  ?.short
+              : "Valores personalizados: use os sliders e observe o GSD e os avisos abaixo."}
           </p>
         </div>
 
@@ -223,19 +641,28 @@ export function FlightPlannerConfigPanel({ projectName, projectId, initialPlan, 
               <li
                 key={n.text}
                 className={
-                  n.severity === 'error'
-                    ? 'flex gap-2 text-red-300/95'
-                    : n.severity === 'warning'
-                      ? 'flex gap-2 text-amber-200/90'
-                      : 'flex gap-2 text-neutral-400'
+                  n.severity === "error"
+                    ? "flex gap-2 text-red-300/95"
+                    : n.severity === "warning"
+                      ? "flex gap-2 text-amber-200/90"
+                      : "flex gap-2 text-neutral-400"
                 }
               >
-                {n.severity === 'error' ? (
-                  <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-                ) : n.severity === 'warning' ? (
-                  <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-amber-300/80" aria-hidden />
+                {n.severity === "error" ? (
+                  <TriangleAlert
+                    className="mt-0.5 size-3.5 shrink-0"
+                    aria-hidden
+                  />
+                ) : n.severity === "warning" ? (
+                  <TriangleAlert
+                    className="mt-0.5 size-3.5 shrink-0 text-amber-300/80"
+                    aria-hidden
+                  />
                 ) : (
-                  <Info className="mt-0.5 size-3.5 shrink-0 text-neutral-500" aria-hidden />
+                  <Info
+                    className="mt-0.5 size-3.5 shrink-0 text-neutral-500"
+                    aria-hidden
+                  />
                 )}
                 <span>{n.text}</span>
               </li>
@@ -262,8 +689,8 @@ export function FlightPlannerConfigPanel({ projectName, projectId, initialPlan, 
           </select>
         </label>
         <p className="text-[11px] leading-snug text-neutral-500">
-          Escolha o mesmo modelo que vai voar: o GSD e as estatisticas usam a largura focal e resolucao da camera
-          cadastradas.
+          Escolha o mesmo modelo que vai voar: o GSD e as estatisticas usam a
+          largura focal e resolucao da camera cadastradas.
         </p>
         <Range
           label="Altitude"
@@ -305,6 +732,58 @@ export function FlightPlannerConfigPanel({ projectName, projectId, initialPlan, 
           hint="Alinha as faixas ao formato da area, vento ou deslocamento. Tambem no mapa (barra lateral) ou com [ / ] no teclado."
           onChange={(v) => setParams({ rotationDeg: v })}
         />
+        {polygon && (
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="inline-flex items-center gap-1.5 text-[11px]"
+              disabled={geoPhase === "loading"}
+              title="Calcula o angulo otimo e define o ponto de inicio mais proximo da sua posicao"
+              onClick={() => {
+                const spec = getDroneSpec(params.droneModel)
+                const gsdM = calculateGsd(params.altitudeM, spec)
+                const footprint = calculateFootprint(gsdM, spec)
+                const spacings = calculateSpacings(footprint, params.forwardOverlap, params.sideOverlap)
+
+                const applyWithLocation = (userPos: { lat: number; lng: number }) => {
+                  setRouteStartRef({ lat: userPos.lat, lng: userPos.lng })
+                  const optimal = calculateOptimalRotation(
+                    polygon,
+                    spacings,
+                    params.altitudeM,
+                    userPos,
+                  )
+                  setParams({ rotationDeg: optimal })
+                }
+
+                // Usa posicao em cache se disponivel, caso contrario requisita nova
+                if (geoPosition) {
+                  applyWithLocation(geoPosition)
+                } else {
+                  void locate()
+                    .then(applyWithLocation)
+                    .catch(() => {
+                      // Sem localizacao: otimiza so pelo angulo, sem alterar routeStartRef
+                      const optimal = calculateOptimalRotation(polygon, spacings, params.altitudeM)
+                      setParams({ rotationDeg: optimal })
+                    })
+                }
+              }}
+            >
+              {geoPhase === "loading" ? (
+                <Loader2 className="size-3.5 animate-spin" aria-hidden />
+              ) : (
+                <Compass className="size-3.5" aria-hidden />
+              )}
+              Auto-rotacao
+            </Button>
+            <p className="text-[10px] text-neutral-500">
+              {routeStartRef ? "Angulo + inicio otimizados" : "Angulo + inicio pela sua posicao"}
+            </p>
+          </div>
+        )}
         <Range
           label="Velocidade"
           value={params.speedMs}
@@ -316,98 +795,265 @@ export function FlightPlannerConfigPanel({ projectName, projectId, initialPlan, 
           onChange={(v) => setParams({ speedMs: v })}
         />
         <p className="text-[11px] leading-snug text-neutral-500/90">
-          Estas sugestoes nao substituem o manual do drone, regras da ANAC ou condicoes locais de voo. Valide sempre no
-          app de campo antes de decolar.
+          Estas sugestoes nao substituem o manual do drone, regras da ANAC ou
+          condicoes locais de voo. Valide sempre no app de campo antes de
+          decolar.
         </p>
-      </Card>
+      </PlannerCollapsibleCard>
 
-      <Card className="glass-card space-y-2">
-        <h3 className="text-sm font-medium text-neutral-200">Inicio da rota</h3>
-        <p className="text-[11px] leading-snug text-neutral-500">
-          Ajusta a ordem das faixas e o sentido do percurso para o primeiro waypoint ficar o mais
-          proximo possivel da sua posicao (GPS do navegador).
-        </p>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            className="inline-flex items-center gap-1.5"
-            disabled={!polygon || geoPhase === 'loading'}
-            onClick={() => {
-              void locate().then((c) => setRouteStartRef({ lat: c.lat, lng: c.lng }))
-            }}
-          >
-            {geoPhase === 'loading' ? (
-              <Loader2 className="size-3.5 animate-spin" aria-hidden />
-            ) : (
-              <MapPin className="size-3.5" aria-hidden />
-            )}
-            Usar minha posicao
-          </Button>
-          {routeStartRef ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setRouteStartRef(null)}
+      <FlightQualityScoreBadge
+        params={params}
+        stats={stats}
+        weather={currentWeather}
+        calibration={activeCalibrationSession}
+      />
+
+      <PlannerCollapsibleCard
+        title="Estatísticas do voo"
+        startsExpanded
+        riskLevel="none"
+      >
+        <AnimatePresence mode="wait">
+          {stats ? (
+            <motion.div
+              key="stats"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
             >
-              Ordem padrao
-            </Button>
-          ) : null}
-        </div>
-        {routeStartRef ? (
-          <p className="text-[11px] text-primary-300/90">
-            Otimizacao ativa: inicio proximo de{' '}
-            {routeStartRef.lat.toFixed(5)}, {routeStartRef.lng.toFixed(5)}.
-          </p>
-        ) : null}
-        {geoError ? <p className="text-[11px] text-red-300/95">{geoError}</p> : null}
-        {!polygon ? (
-          <p className="text-[11px] text-neutral-500">Desenhe a area de voo no mapa para habilitar.</p>
-        ) : null}
-      </Card>
+              <p className="mb-2 text-[11px] leading-snug text-neutral-500">
+                GSD calculado na área desenhada; compare com o exigido pelo seu
+                software de fotogrametria.
+              </p>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                {(
+                  [
+                    {
+                      label: "GSD",
+                      value: `${format.number(stats.gsdCm, 2)} cm/px`,
+                      icon: Focus,
+                      color: "text-violet-400",
+                    },
+                    {
+                      label: "Área",
+                      value: `${format.number(stats.areaHa, 2)} ha`,
+                      icon: Maximize2,
+                      color: "text-primary-400",
+                    },
+                    {
+                      label: "Waypoints",
+                      value: String(stats.waypointCount),
+                      icon: Navigation,
+                      color: "text-sky-400",
+                    },
+                    {
+                      label: "Faixas",
+                      value: String(stats.stripCount),
+                      icon: Ruler,
+                      color: "text-blue-400",
+                    },
+                    {
+                      label: "Fotos",
+                      value: String(stats.estimatedPhotos),
+                      icon: Camera,
+                      color: "text-amber-400",
+                    },
+                    {
+                      label: "Tempo",
+                      value: `${format.number(stats.estimatedTimeMin, 0)} min`,
+                      icon: Clock,
+                      color: "text-orange-400",
+                    },
+                    {
+                      label: "Baterias",
+                      value: String(stats.batteryCount),
+                      icon: Battery,
+                      color:
+                        stats.batteryCount > 2
+                          ? "text-amber-400"
+                          : "text-primary-400",
+                    },
+                    {
+                      label: "Distância",
+                      value: `${format.number(stats.distanceKm, 2)} km`,
+                      icon: Ruler,
+                      color: "text-neutral-400",
+                    },
+                  ] as const
+                ).map((item, i) => {
+                  const Icon = item.icon;
+                  return (
+                    <motion.div
+                      key={item.label}
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.2, delay: i * 0.04 }}
+                      className="glass-stat"
+                    >
+                      <p
+                        className={`mb-1 inline-flex items-center gap-1 text-[10px] uppercase tracking-wide text-neutral-500`}
+                      >
+                        <Icon className={`size-3 ${item.color}`} aria-hidden />
+                        {item.label}
+                      </p>
+                      <p className="text-sm font-semibold tabular-nums text-neutral-100">
+                        {item.value}
+                      </p>
+                      {item.label === "Baterias" && stats.batteryCount > 2 && (
+                        <div className="mt-1 flex gap-0.5">
+                          {Array.from({
+                            length: Math.min(stats.batteryCount, 6),
+                          }).map((_, bi) => (
+                            <div
+                              key={bi}
+                              className="h-1 flex-1 rounded-full bg-amber-400/60"
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </motion.div>
+                  );
+                })}
+              </div>
 
-      <Card className="glass-card space-y-2">
-        <h3 className="text-sm font-medium text-neutral-200">Estatisticas</h3>
-        {stats ? (
-          <>
-            <p className="text-[11px] leading-snug text-neutral-500">
-              GSD na area desenhada reflete a geometria media; use-o para comparar com o exigido pelo seu software de
-              fotogrametria ou projeto.
-            </p>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-            <Stat label="GSD" value={`${format.number(stats.gsdCm, 2)} cm/px`} />
-            <Stat label="Area" value={`${format.number(stats.areaHa, 2)} ha`} />
-            <Stat label="Waypoints" value={String(stats.waypointCount)} />
-            <Stat label="Faixas" value={String(stats.stripCount)} />
-            <Stat label="Fotos" value={String(stats.estimatedPhotos)} />
-            <Stat label="Tempo" value={`${format.number(stats.estimatedTimeMin, 0)} min`} />
-            <Stat label="Baterias" value={String(stats.batteryCount)} />
-            <Stat label="Distancia" value={`${format.number(stats.distanceKm, 2)} km`} />
-          </div>
-          </>
-        ) : (
-          <p className="text-sm text-neutral-400">Desenhe uma area para calcular o plano.</p>
-        )}
+              {/* Estimativa de precisao posicional */}
+              {(() => {
+                const p = estimatePrecision(stats.gsdCm)
+                return (
+                  <div className="mt-2 rounded-lg border border-white/[0.07] bg-white/[0.03] px-3 py-2.5 text-[11px]">
+                    <p className="mb-1.5 font-medium text-neutral-400">
+                      Precisao estimada{" "}
+                      <span className="font-normal text-neutral-600">
+                        (sem GCP, tipica)
+                      </span>
+                    </p>
+                    <div className="flex gap-4 text-neutral-300">
+                      <span>
+                        XY:{" "}
+                        <span className="font-mono text-neutral-100">
+                          {p.xyMinCm}–{p.xyMaxCm} cm
+                        </span>
+                      </span>
+                      <span>
+                        Z:{" "}
+                        <span className="font-mono text-neutral-100">
+                          {p.zMinCm}–{p.zMaxCm} cm
+                        </span>
+                      </span>
+                    </div>
+                    <p className="mt-1 text-[10px] text-neutral-600">
+                      Com GCPs:{" "}
+                      <span className="text-neutral-500">
+                        XY ~{format.number(0.7 * stats.gsdCm, 1)} cm / Z ~
+                        {format.number(1.2 * stats.gsdCm, 1)} cm
+                      </span>
+                    </p>
+                  </div>
+                )
+              })()}
+            </motion.div>
+          ) : (
+            <motion.div
+              key="empty"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex flex-col items-center gap-3 py-6 text-center"
+            >
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/[0.04] ring-1 ring-white/[0.07]">
+                <Navigation className="size-6 text-neutral-600" />
+              </div>
+              <p className="text-sm text-neutral-500">
+                Desenhe uma área no mapa para calcular o plano de voo.
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
         {isCalculating && (
           <div className="inline-flex items-center gap-2 text-xs text-neutral-300">
             <Loader2 className="size-3 animate-spin" /> Recalculando...
           </div>
         )}
-      </Card>
+      </PlannerCollapsibleCard>
 
-      <Card className="glass-card space-y-3">
-        <h3 className="text-sm font-medium text-neutral-200">Clima e previsao</h3>
+      <PlannerCollapsibleCard
+        title="Janela de voo estimada"
+        startsExpanded={false}
+        riskLevel={solarSectionRisk}
+        leadingIcon={
+          <Sun className="text-amber-300/90" aria-hidden />
+        }
+      >
+        {solarPanelLines && polygonCenter ? (
+          <>
+            {/* Sun arc illustration */}
+            <SolarArc
+              weather={currentWeather}
+              lat={polygonCenter.lat}
+              lon={polygonCenter.lon}
+              when={solarNow}
+            />
+            <p className="text-[11px] leading-snug text-neutral-500">
+              Posição solar, faixa ideal e ND heurístico para o centro da área —
+              não substitui análise de fotos.
+            </p>
+            <ul className="list-none space-y-1.5 text-xs leading-relaxed text-neutral-300">
+              {solarPanelLines.map((line, idx) => (
+                <motion.li
+                  key={idx}
+                  initial={{ opacity: 0, x: -4 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: idx * 0.05, duration: 0.2 }}
+                  className="rounded-lg border border-white/[0.06] bg-black/20 px-2.5 py-2 text-[11px] leading-snug"
+                >
+                  {line}
+                </motion.li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <div className="flex flex-col items-center gap-3 py-4 text-center">
+            <SolarArcEmpty />
+            <p className="text-sm text-neutral-500">
+              Desenhe a área no mapa para estimar sol, sombras e janela.
+            </p>
+          </div>
+        )}
+      </PlannerCollapsibleCard>
+
+      <PlannerCollapsibleCard
+        title="Clima e previsão"
+        startsExpanded={false}
+        riskLevel={weatherSectionRisk}
+      >
         {isWeatherLoading ? (
-          <p className="text-sm text-neutral-400">Carregando clima...</p>
+          <div className="flex items-center gap-3 py-2">
+            <Loader2 className="size-4 animate-spin text-neutral-500" />
+            <p className="text-sm text-neutral-400">Carregando clima...</p>
+          </div>
         ) : currentWeather ? (
           <>
+            {/* Visual weather header */}
+            <WeatherHero
+              weather={currentWeather}
+              assessment={currentAssessment}
+            />
+
             {currentAssessment ? (
               <div className="space-y-2">
-                <Badge variant={currentAssessment.go ? 'success' : 'error'} className="inline-flex items-center gap-1">
-                  {currentAssessment.go ? <Check className="size-3" /> : <TriangleAlert className="size-3" />}
-                  {currentAssessment.go ? 'Condicoes adequadas para o perfil do drone' : 'Voo nao recomendado'}
+                <Badge
+                  variant={currentAssessment.go ? "success" : "error"}
+                  className="inline-flex items-center gap-1"
+                >
+                  {currentAssessment.go ? (
+                    <Check className="size-3" />
+                  ) : (
+                    <TriangleAlert className="size-3" />
+                  )}
+                  {currentAssessment.go
+                    ? "Condições adequadas para o perfil do drone"
+                    : "Voo não recomendado"}
                 </Badge>
                 {currentAssessment.issues.length > 0 ? (
                   <ul className="list-inside list-disc space-y-1 text-xs text-red-300/95">
@@ -433,37 +1079,6 @@ export function FlightPlannerConfigPanel({ projectName, projectId, initialPlan, 
               </div>
             ) : null}
 
-            <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
-                Agora
-              </p>
-              <div className="mt-1 flex flex-wrap items-center gap-2">
-                <span className="text-sm font-medium text-neutral-100">
-                  {currentWeather.conditionLabel ??
-                    wmoCodeToConditionPt(currentWeather.weatherCode ?? 0)}
-                </span>
-                {currentWeather.isDay === false ? (
-                  <span className="inline-flex items-center gap-0.5 rounded bg-neutral-800/80 px-1.5 py-0.5 text-[10px] text-neutral-300">
-                    <Moon className="size-3" aria-hidden /> Noite
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-0.5 rounded bg-amber-950/50 px-1.5 py-0.5 text-[10px] text-amber-200/90">
-                    <Sun className="size-3" aria-hidden /> Dia
-                  </span>
-                )}
-              </div>
-              <p className="mt-2 inline-flex items-center gap-1.5 text-neutral-200">
-                <Umbrella className="size-3.5 shrink-0 text-sky-300" aria-hidden />
-                <span className="font-medium">
-                  {currentWeather.isPrecipitatingNow === true
-                    ? 'Chovendo ou com precipitacao no momento'
-                    : currentWeather.rainMmH > 0.05
-                      ? 'Sem chuva forte agora, mas ha precipitacao medida'
-                      : 'Sem precipitacao relevante no momento'}
-                </span>
-              </p>
-            </div>
-
             <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
               <Stat
                 icon={<Thermometer className="size-3" />}
@@ -476,7 +1091,7 @@ export function FlightPlannerConfigPanel({ projectName, projectId, initialPlan, 
                 value={
                   currentWeather.apparentTemperatureC != null
                     ? `${format.number(currentWeather.apparentTemperatureC, 1)} ºC`
-                    : '—'
+                    : "—"
                 }
               />
               <Stat
@@ -485,7 +1100,7 @@ export function FlightPlannerConfigPanel({ projectName, projectId, initialPlan, 
                 value={
                   currentWeather.relativeHumidityPct != null
                     ? `${currentWeather.relativeHumidityPct}%`
-                    : '—'
+                    : "—"
                 }
               />
               <Stat
@@ -494,7 +1109,7 @@ export function FlightPlannerConfigPanel({ projectName, projectId, initialPlan, 
                 value={
                   currentWeather.pressureHpa != null
                     ? `${format.number(currentWeather.pressureHpa, 1)} hPa`
-                    : '—'
+                    : "—"
                 }
               />
               <Stat
@@ -518,7 +1133,7 @@ export function FlightPlannerConfigPanel({ projectName, projectId, initialPlan, 
                 value={
                   currentWeather.windGustsMs != null
                     ? `${format.number(currentWeather.windGustsMs, 1)} m/s`
-                    : '—'
+                    : "—"
                 }
               />
               <Stat
@@ -526,7 +1141,8 @@ export function FlightPlannerConfigPanel({ projectName, projectId, initialPlan, 
                 label="Direcao"
                 value={`${windDegToCompass(currentWeather.windDirectionDeg)} (${Math.round(currentWeather.windDirectionDeg)}º)`}
               />
-              {(currentWeather.rainMmHRaw != null || currentWeather.showersMmH != null) && (
+              {(currentWeather.rainMmHRaw != null ||
+                currentWeather.showersMmH != null) && (
                 <>
                   <Stat
                     icon={<Droplets className="size-3" />}
@@ -534,7 +1150,7 @@ export function FlightPlannerConfigPanel({ projectName, projectId, initialPlan, 
                     value={
                       currentWeather.rainMmHRaw != null
                         ? `${format.number(currentWeather.rainMmHRaw, 2)} mm/h`
-                        : '—'
+                        : "—"
                     }
                   />
                   <Stat
@@ -543,14 +1159,15 @@ export function FlightPlannerConfigPanel({ projectName, projectId, initialPlan, 
                     value={
                       currentWeather.showersMmH != null
                         ? `${format.number(currentWeather.showersMmH, 2)} mm/h`
-                        : '—'
+                        : "—"
                     }
                   />
                 </>
               )}
             </div>
 
-            {currentWeather.hourlyForecast && currentWeather.hourlyForecast.length > 0 ? (
+            {currentWeather.hourlyForecast &&
+            currentWeather.hourlyForecast.length > 0 ? (
               <div className="space-y-1.5">
                 <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
                   Proximas 24 horas (Open-Meteo)
@@ -563,7 +1180,9 @@ export function FlightPlannerConfigPanel({ projectName, projectId, initialPlan, 
                         <th className="px-2 py-1.5 font-medium">Temp</th>
                         <th className="px-2 py-1.5 font-medium">Prob.</th>
                         <th className="px-2 py-1.5 font-medium">mm/h</th>
-                        <th className="px-2 py-1.5 font-medium hidden min-[380px]:table-cell">Tempo</th>
+                        <th className="px-2 py-1.5 font-medium hidden min-[380px]:table-cell">
+                          Tempo
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -578,7 +1197,9 @@ export function FlightPlannerConfigPanel({ projectName, projectId, initialPlan, 
                           <td className="px-2 py-1 font-mono tabular-nums">
                             {format.number(h.tempC, 0)}º
                           </td>
-                          <td className="px-2 py-1 font-mono tabular-nums">{h.precipProbPct}%</td>
+                          <td className="px-2 py-1 font-mono tabular-nums">
+                            {h.precipProbPct}%
+                          </td>
                           <td className="px-2 py-1 font-mono tabular-nums">
                             {format.number(h.precipMm, 2)}
                           </td>
@@ -594,31 +1215,355 @@ export function FlightPlannerConfigPanel({ projectName, projectId, initialPlan, 
             ) : null}
           </>
         ) : (
-          <p className="text-sm text-neutral-400">O clima aparece apos desenhar a area.</p>
+          <p className="text-sm text-neutral-400">
+            O clima aparece apos desenhar a area.
+          </p>
         )}
-      </Card>
+      </PlannerCollapsibleCard>
+
+      <PlannerCollapsibleCard
+        title="Voo de calibração"
+        startsExpanded={false}
+        riskLevel="none"
+      >
+        <p className="text-[11px] leading-snug text-neutral-500">
+          Área reduzida no centro do polígono, mesmos parâmetros de overlap. Pré-visualize no mapa a grade de
+          fotos e a rota; depois confirme para abrir o resumo «Antes de voar» com checklist e exportação do KMZ
+          de teste.
+        </p>
+        {calibrationMission ? (
+          <ul className="mt-2 space-y-1 text-[11px] text-neutral-400">
+            <li>
+              <span className="text-neutral-500">Fotos estimadas:</span>{" "}
+              <span className="font-mono text-neutral-200">
+                {calibrationMission.stats.estimatedPhotos}
+              </span>
+              {" · "}
+              <span className="text-neutral-500">Tempo:</span>{" "}
+              <span className="font-mono text-neutral-200">
+                {format.number(calibrationMission.stats.estimatedTimeMin, 1)}
+              </span>{" "}
+              min
+              {" · "}
+              <span className="text-neutral-500">Waypoints:</span>{" "}
+              <span className="font-mono text-neutral-200">
+                {calibrationMission.stats.waypointCount}
+              </span>
+            </li>
+          </ul>
+        ) : (
+          <p className="mt-2 text-xs text-amber-200/85">
+            Desenhe a área e aguarde o cálculo da rota principal para gerar o recorte de calibração.
+          </p>
+        )}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            className="text-[11px]"
+            disabled={!calibrationMission}
+            onClick={() => {
+              if (calibrationMapPreviewActive) {
+                setPreFlightFlow("calibration");
+                setPreFlightKey((k) => k + 1);
+                setPreFlightOpen(true);
+                return;
+              }
+              setPlannerInteractionMode("navigate");
+              setCalibrationMapPreviewActive(true);
+            }}
+          >
+            {calibrationMapPreviewActive
+              ? "Confirmar voo de calibração"
+              : "Executar voo de calibração"}
+          </Button>
+          {calibrationMapPreviewActive ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-[11px] text-neutral-500"
+              onClick={() => setCalibrationMapPreviewActive(false)}
+            >
+              Sair da pré-visualização
+            </Button>
+          ) : null}
+        </div>
+
+        <p className="mt-4 text-[11px] font-medium uppercase tracking-wide text-neutral-500">
+          Histórico de calibração
+        </p>
+        {calibrationSessions.length === 0 ? (
+          <p className="text-xs text-neutral-500">Nenhuma sessão ainda.</p>
+        ) : (
+          <ul className="max-h-36 space-y-1.5 overflow-y-auto text-xs">
+            {calibrationSessions.map((s) => (
+              <li
+                key={s.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded border border-white/10 bg-black/20 px-2 py-1.5"
+              >
+                <span className="font-mono text-[10px] text-neutral-400">
+                  {s.id.slice(0, 8)}…
+                </span>
+                <span className="text-neutral-500">
+                  {new Date(s.created_at).toLocaleString("pt-BR", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </span>
+                <div className="flex flex-wrap items-center gap-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-[11px] text-primary-300/90"
+                    onClick={() => {
+                      setCalibrationSessionId(s.id);
+                      toast.message("Sessão selecionada", {
+                        description:
+                          "O ID foi guardado no planejador para o fluxo de upload.",
+                      });
+                    }}
+                  >
+                    Usar no planejador
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 shrink-0 p-0 text-neutral-500 hover:border-red-900/40 hover:bg-red-950/30 hover:text-red-300"
+                    disabled={deletingCalibrationSessionId === s.id}
+                    aria-label="Remover sessão do histórico"
+                    title="Remover do histórico"
+                    onClick={() => {
+                      if (
+                        !window.confirm(
+                          "Remover esta sessão do histórico? Os dados e fotos associados deixam de estar disponíveis.",
+                        )
+                      ) {
+                        return;
+                      }
+                      void (async () => {
+                        setDeletingCalibrationSessionId(s.id);
+                        try {
+                          await projectsService.deleteCalibrationSession(
+                            projectId,
+                            s.id,
+                          );
+                          if (calibrationSessionId === s.id) {
+                            setCalibrationSessionId(null);
+                            setCalibrationSessionRevision((n) => n + 1);
+                          }
+                          setCalibrationSessions((prev) =>
+                            prev.filter((row) => row.id !== s.id),
+                          );
+                          toast.success("Sessão removida.");
+                        } catch {
+                          toast.error("Não foi possível remover a sessão.");
+                        } finally {
+                          setDeletingCalibrationSessionId(null);
+                        }
+                      })();
+                    }}
+                  >
+                    {deletingCalibrationSessionId === s.id ? (
+                      <Loader2
+                        className="size-3.5 animate-spin"
+                        aria-hidden
+                      />
+                    ) : (
+                      <Trash2 className="size-3.5" aria-hidden />
+                    )}
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        {calibrationOutdated && (
+          <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-[11px] leading-snug text-amber-200/90">
+            <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-amber-400" aria-hidden />
+            <span>
+              <span className="font-medium">Calibração desatualizada:</span> altitude ou sobreposição mudou significativamente desde o último voo de calibração. Considere refazer a calibração com os parâmetros atuais.
+            </span>
+          </div>
+        )}
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="text-[11px]"
+            disabled={!calibrationSessionId}
+            onClick={() => setCalibrationUploadOpen(true)}
+          >
+            Enviar fotos (EXIF)
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="text-[11px] text-neutral-500"
+            onClick={() => void loadCalibrationSessions()}
+          >
+            Atualizar lista
+          </Button>
+        </div>
+      </PlannerCollapsibleCard>
 
       <Card className="glass-card space-y-3">
-        <div className="flex flex-wrap gap-2">
-          <Button onClick={() => void saveCurrentPlan()} disabled={!hasPlan || saving}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            onClick={() => void saveCurrentPlan()}
+            disabled={!hasPlan || saving}
+          >
             {saving ? (
               <span className="inline-flex items-center gap-2">
                 <Loader2 className="size-3.5 animate-spin" />
                 Salvando…
               </span>
             ) : (
-              'Salvar plano'
+              "Salvar plano"
             )}
           </Button>
-          <Button variant="outline" onClick={() => kmzExport.generateAndDownload(waypoints, params)} disabled={!hasPlan || kmzExport.status === 'generating'}>
+          <Button
+            variant="outline"
+            onClick={onRequestKmzDownload}
+            disabled={!hasPlan || kmzExport.status === "generating"}
+          >
             <Download className="mr-1 size-4" />
-            {kmzExport.status === 'generating' ? 'Gerando...' : 'Baixar KMZ'}
+            {kmzExport.status === "generating" ? "Gerando..." : "Baixar KMZ"}
           </Button>
+          {platform.isNative && platform.isAndroid ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!hasPlan || kmzExport.status === "generating"}
+              onClick={() => setNativeKmzOpen(true)}
+            >
+              Enviar ao DJI
+            </Button>
+          ) : null}
         </div>
-        {weatherError ? <p className="text-xs text-red-400">{weatherError}</p> : null}
+        <label className="mt-1 flex cursor-pointer items-start gap-2 text-[11px] leading-snug text-neutral-500">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border border-neutral-600"
+            checked={skipKmzPreFlight}
+            onChange={(e) => {
+              const v = e.target.checked;
+              writePreFlightKmzModalSkip(projectId, v);
+              bumpKmzStorageRead((n) => n + 1);
+            }}
+          />
+          <span>
+            Pular revisão «Antes de voar» para este projeto (o modal não abre;
+            ainda dá para reativar deixando esta opção desmarcada).
+          </span>
+        </label>
+        {weatherError ? (
+          <p
+            className={cn(
+              "text-xs",
+              isWeatherUnavailableCopy(weatherError)
+                ? "text-amber-400/95"
+                : "text-red-400",
+            )}
+          >
+            {weatherError}
+          </p>
+        ) : null}
       </Card>
+
+      {platform.isNative && platform.isAndroid ? (
+        <KmzTransferNative
+          open={nativeKmzOpen}
+          onOpenChange={setNativeKmzOpen}
+          buildKmzArrayBuffer={buildFlightKmzArrayBuffer}
+        />
+      ) : null}
+
+      <CalibrationUploadDialog
+        open={calibrationUploadOpen}
+        onOpenChange={setCalibrationUploadOpen}
+        sessionId={calibrationSessionId}
+        calibrationPolygon={calibrationMission?.calibrationPolygon ?? null}
+        plannerBaseLayerId={plannerBaseLayer}
+        onUploaded={() => {
+          void loadCalibrationSessions();
+          setCalibrationSessionRevision((n) => n + 1);
+        }}
+      />
+
+      <PreFlightChecklistModal
+        key={preFlightKey}
+        flow={preFlightFlow}
+        open={preFlightOpen}
+        onOpenChange={(o) => {
+          setPreFlightOpen(o);
+          if (!o) {
+            bumpKmzStorageRead((n) => n + 1);
+            setCalibrationMapPreviewActive(false);
+          }
+        }}
+        projectId={projectId}
+        params={params}
+        weather={currentWeather}
+        assessment={currentAssessment}
+        polygonCenter={polygonCenter}
+        missionPolygon={polygon}
+        calibrationMission={calibrationMission}
+        calibrationSessionId={calibrationSessionId}
+        missionStats={stats}
+        calibrationSessionRevision={calibrationSessionRevision}
+        onRequestCalibrationUpload={() => setCalibrationUploadOpen(true)}
+        onConfirmDownload={() => {
+          void kmzExport.generateAndDownload(waypoints, params);
+        }}
+        onCalibrationDownload={async () => {
+          if (!calibrationMission) return;
+          try {
+            const created = await projectsService.createCalibrationSession(
+              projectId,
+              {
+                params_snapshot: {
+                  ...params,
+                  _calibration: {
+                    gsdCm: calibrationMission.stats.gsdCm,
+                    estimatedPhotos: calibrationMission.stats.estimatedPhotos,
+                    estimatedTimeMin: calibrationMission.stats.estimatedTimeMin,
+                  },
+                } as unknown as Record<string, unknown>,
+                polygon_snapshot:
+                  calibrationMission.calibrationPolygon as unknown as Record<
+                    string,
+                    unknown
+                  >,
+              },
+            );
+            setCalibrationSessionId(created.session_id);
+            await kmzCalibExport.generateAndDownload(
+              calibrationMission.waypoints,
+              params,
+              {
+                variant: "calibration",
+              },
+            );
+            toast.success("Sessão de calibração criada e KMZ baixado.");
+            void loadCalibrationSessions();
+          } catch {
+            toast.error(
+              "Não foi possível criar a sessão ou gerar o KMZ de calibração.",
+            );
+          }
+        }}
+        isGeneratingKmz={kmzExport.status === "generating"}
+        isCalibrationKmzGenerating={kmzCalibExport.status === "generating"}
+      />
     </div>
-  )
+  );
 }
 
 function Range({
@@ -631,16 +1576,16 @@ function Range({
   unit,
   hint,
 }: {
-  label: string
-  value: number
-  min: number
-  max: number
-  step: number
-  onChange: (value: number) => void
-  unit?: string
-  hint?: string
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (value: number) => void;
+  unit?: string;
+  hint?: string;
 }) {
-  const clamp = (n: number) => Math.min(max, Math.max(min, n))
+  const clamp = (n: number) => Math.min(max, Math.max(min, n));
   return (
     <div className="grid gap-1 text-xs text-neutral-400">
       <div className="flex items-center justify-between gap-2">
@@ -663,18 +1608,20 @@ function Range({
             max={max}
             step={step}
             onChange={(e) => {
-              const raw = e.target.value
-              if (raw === "" || raw === "-") return
-              const n = Number(raw)
-              if (Number.isNaN(n)) return
-              onChange(clamp(n))
+              const raw = e.target.value;
+              if (raw === "" || raw === "-") return;
+              const n = Number(raw);
+              if (Number.isNaN(n)) return;
+              onChange(clamp(n));
             }}
             onBlur={(e) => {
               if (e.target.value === "" || Number.isNaN(Number(e.target.value)))
-                onChange(clamp(value))
+                onChange(clamp(value));
             }}
           />
-          <span className="w-4 shrink-0 text-[11px] text-neutral-500">{unit ?? ''}</span>
+          <span className="w-4 shrink-0 text-[11px] text-neutral-500">
+            {unit ?? ""}
+          </span>
           <button
             type="button"
             className="touch-target flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-neutral-700 bg-neutral-950/80 text-lg text-neutral-100 hover:border-neutral-500"
@@ -694,24 +1641,34 @@ function Range({
         value={value}
         onChange={(e) => onChange(clamp(Number(e.target.value)))}
       />
-      {hint ? <p className="text-[11px] leading-snug text-neutral-500">{hint}</p> : null}
+      {hint ? (
+        <p className="text-[11px] leading-snug text-neutral-500">{hint}</p>
+      ) : null}
     </div>
-  )
+  );
 }
 
 function formatForecastHourLabel(iso: string) {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleString('pt-BR', {
-    weekday: 'short',
-    day: '2-digit',
-    month: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString("pt-BR", {
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
-function Stat({ label, value, icon }: { label: string; value: string; icon?: ReactNode }) {
+function Stat({
+  label,
+  value,
+  icon,
+}: {
+  label: string;
+  value: string;
+  icon?: ReactNode;
+}) {
   return (
     <div className="glass-stat">
       <p className="mb-1 inline-flex items-center gap-1 text-[11px] uppercase tracking-wide text-neutral-500">
@@ -720,5 +1677,281 @@ function Stat({ label, value, icon }: { label: string; value: string; icon?: Rea
       </p>
       <p className="text-sm font-medium text-neutral-100">{value}</p>
     </div>
-  )
+  );
+}
+
+// Visual weather hero with temperature, condition, and wind compass
+function WeatherHero({
+  weather,
+  assessment,
+}: {
+  weather: import("@/features/flight-planner/types").WeatherData;
+  assessment: import("@/features/flight-planner/types").FlightAssessment | null;
+}) {
+  const condition =
+    weather.conditionLabel ?? wmoCodeToConditionPt(weather.weatherCode ?? 0);
+  const isNight = weather.isDay === false;
+  const go = assessment?.go ?? true;
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-white/[0.08] bg-gradient-to-br from-white/[0.05] to-transparent">
+      <div className="flex items-stretch">
+        {/* Temperature block */}
+        <div className="flex flex-col items-center justify-center gap-1 border-r border-white/[0.08] px-4 py-3">
+          {isNight ? (
+            <Moon className="size-5 text-blue-300/80" />
+          ) : (
+            <Sun className="size-5 text-amber-300/90" />
+          )}
+          <span className="font-mono text-2xl font-bold tabular-nums text-white">
+            {Math.round(weather.temperatureC)}°
+          </span>
+          {weather.apparentTemperatureC != null && (
+            <span className="text-[10px] text-neutral-500">
+              sens. {Math.round(weather.apparentTemperatureC)}°
+            </span>
+          )}
+        </div>
+
+        {/* Condition + wind */}
+        <div className="flex flex-1 flex-col justify-center gap-1.5 px-3 py-3">
+          <p className="text-sm font-medium text-neutral-200">{condition}</p>
+
+          {/* Wind with direction arrow */}
+          <div className="flex items-center gap-2">
+            <span
+              className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-white/[0.06]"
+              title={`Direção: ${Math.round(weather.windDirectionDeg)}°`}
+            >
+              <svg
+                width="10"
+                height="10"
+                viewBox="0 0 10 10"
+                style={{ transform: `rotate(${weather.windDirectionDeg}deg)` }}
+              >
+                <path
+                  d="M5 0 L3 10 L5 8 L7 10 Z"
+                  fill="currentColor"
+                  className="text-sky-300"
+                />
+              </svg>
+            </span>
+            <span className="text-xs text-neutral-300">
+              {windDegToCompass(weather.windDirectionDeg)} ·{" "}
+              {weather.windSpeedMs.toFixed(1)} m/s
+              {weather.windGustsMs != null &&
+                weather.windGustsMs > weather.windSpeedMs + 2 && (
+                  <span className="text-amber-300/80">
+                    {" "}
+                    (rajadas {weather.windGustsMs.toFixed(1)})
+                  </span>
+                )}
+            </span>
+          </div>
+
+          {/* Precipitation */}
+          {weather.rainMmH > 0.05 || weather.isPrecipitatingNow ? (
+            <div className="flex items-center gap-1.5 text-[11px] text-sky-300/90">
+              <Umbrella className="size-3 shrink-0" />
+              <span>
+                {weather.isPrecipitatingNow
+                  ? "Precipitação agora"
+                  : `${weather.rainMmH.toFixed(2)} mm/h`}
+              </span>
+            </div>
+          ) : null}
+        </div>
+
+        {/* Go / No-go indicator */}
+        <div className="flex items-center justify-center border-l border-white/[0.08] px-3">
+          <div
+            className={cn(
+              "flex h-10 w-10 flex-col items-center justify-center rounded-xl text-center",
+              go
+                ? "bg-primary-500/15 ring-1 ring-primary-500/30"
+                : "bg-red-500/15 ring-1 ring-red-500/30",
+            )}
+          >
+            {go ? (
+              <Check className="size-4 text-primary-400" />
+            ) : (
+              <TriangleAlert className="size-4 text-red-400" />
+            )}
+            <span
+              className={cn(
+                "text-[8px] font-bold uppercase tracking-wide",
+                go ? "text-primary-400" : "text-red-400",
+              )}
+            >
+              {go ? "GO" : "NO"}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Visual sun arc showing position and golden hour window
+function SolarArc({
+  weather,
+  lat,
+  lon,
+  when,
+}: {
+  weather: import("@/features/flight-planner/types").WeatherData | null;
+  lat: number;
+  lon: number;
+  when: Date;
+}) {
+  const cloudPct = weather?.cloudCoveragePct ?? 0;
+  const isGoodLight = cloudPct < 70 && weather?.isDay !== false;
+  const dot = getSolarArcIllustrationDot(lat, lon, when);
+  const sunBelow = dot.elevationDeg < -4;
+
+  return (
+    <div className="flex items-center justify-center py-2">
+      <svg width="180" height="90" viewBox="0 0 180 90" fill="none" aria-hidden>
+        {/* Horizon line */}
+        <line
+          x1="10"
+          y1="82"
+          x2="170"
+          y2="82"
+          stroke="rgba(255,255,255,0.08)"
+          strokeWidth="1"
+        />
+
+        {/* Sky arc */}
+        <path
+          d="M 15 82 A 75 75 0 0 1 165 82"
+          stroke="rgba(255,255,255,0.06)"
+          strokeWidth="1"
+          fill="none"
+        />
+
+        {/* Golden hour zones (morning ~6-9h, evening ~15-18h) */}
+        <path
+          d="M 15 82 A 75 75 0 0 1 58 20"
+          stroke="rgba(251,191,36,0.25)"
+          strokeWidth="8"
+          fill="none"
+          strokeLinecap="round"
+        />
+        <path
+          d="M 122 20 A 75 75 0 0 1 165 82"
+          stroke="rgba(251,191,36,0.25)"
+          strokeWidth="8"
+          fill="none"
+          strokeLinecap="round"
+        />
+
+        {/* Ideal flight zone (9-15h) */}
+        <path
+          d="M 58 20 A 75 75 0 0 1 122 20"
+          stroke={
+            isGoodLight ? "rgba(62,207,142,0.45)" : "rgba(62,207,142,0.2)"
+          }
+          strokeWidth="8"
+          fill="none"
+          strokeLinecap="round"
+        />
+
+        {/* Sol / lua conforme elevação (e azimute no plano); alinhado ao modelo de `getSunPositionDeg` */}
+        {!sunBelow ? (
+          <>
+            <circle cx={dot.cx} cy={dot.cy} r="7" fill="rgba(251,191,36,0.15)" />
+            <circle cx={dot.cx} cy={dot.cy} r="4" fill="rgba(251,191,36,0.9)" />
+            <circle cx={dot.cx} cy={dot.cy} r="2" fill="white" opacity="0.8" />
+          </>
+        ) : (
+          <>
+            <circle cx={dot.cx} cy={dot.cy} r="5" fill="rgba(147,197,253,0.7)" />
+            <circle cx={dot.cx} cy={dot.cy} r="2.5" fill="white" opacity="0.6" />
+          </>
+        )}
+
+        {/* Labels */}
+        <text
+          x="10"
+          y="79"
+          fontSize="8"
+          fill="rgba(255,255,255,0.25)"
+          fontFamily="monospace"
+        >
+          L
+        </text>
+        <text
+          x="162"
+          y="79"
+          fontSize="8"
+          fill="rgba(255,255,255,0.25)"
+          fontFamily="monospace"
+        >
+          O
+        </text>
+        <text
+          x="82"
+          y="10"
+          fontSize="7"
+          fill="rgba(251,191,36,0.5)"
+          fontFamily="monospace"
+        >
+          ☀
+        </text>
+      </svg>
+
+      <div className="ml-3 space-y-1.5 text-[10px]">
+        <div className="flex items-center gap-1.5">
+          <div className="h-2 w-4 rounded-full bg-amber-400/35" />
+          <span className="text-neutral-500">Hora dourada</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div
+            className={cn(
+              "h-2 w-4 rounded-full",
+              isGoodLight ? "bg-primary-500/55" : "bg-primary-500/20",
+            )}
+          />
+          <span className="text-neutral-500">Janela ideal</span>
+        </div>
+        {cloudPct > 0 && (
+          <div className="flex items-center gap-1 text-neutral-500">
+            <Cloud className="size-3" />
+            <span>{Math.round(cloudPct)}% nuvens</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SolarArcEmpty() {
+  return (
+    <svg width="120" height="60" viewBox="0 0 120 60" fill="none" aria-hidden>
+      <line
+        x1="5"
+        y1="55"
+        x2="115"
+        y2="55"
+        stroke="rgba(255,255,255,0.06)"
+        strokeWidth="1"
+      />
+      <path
+        d="M 8 55 A 52 52 0 0 1 112 55"
+        stroke="rgba(255,255,255,0.06)"
+        strokeWidth="1"
+        fill="none"
+      />
+      <circle
+        cx="60"
+        cy="10"
+        r="8"
+        fill="rgba(255,255,255,0.05)"
+        stroke="rgba(255,255,255,0.08)"
+        strokeWidth="1"
+        strokeDasharray="2 2"
+      />
+    </svg>
+  );
 }

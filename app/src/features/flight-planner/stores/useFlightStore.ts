@@ -18,6 +18,8 @@ export type PersistedFlightPlan = {
   stats: FlightStats | null
   weather: WeatherData | null
   assessment: FlightAssessment | null
+  /** Sessão de calibração no backend (Fase 2–3); opcional para compatibilidade com snapshots antigos. */
+  calibrationSessionId?: string | null
 }
 
 export type PlannerInteractionMode = 'navigate' | 'draw'
@@ -27,6 +29,11 @@ export type RouteStartRef = { lat: number; lng: number }
 
 type FlightStore = PersistedFlightPlan & {
   strips: Strip[]
+  /** Correlaciona KMZ de calibração com upload na Fase 3. */
+  calibrationSessionId: string | null
+  setCalibrationSessionId: (id: string | null) => void
+  calibrationMapPreviewActive: boolean
+  setCalibrationMapPreviewActive: (active: boolean) => void
   isCalculating: boolean
   /** Quando definido, o calculo escolhe LTR/RTL e sentido do percurso para minimizar distancia ate este ponto. */
   routeStartRef: RouteStartRef | null
@@ -65,6 +72,11 @@ export const useFlightStore = create<FlightStore>((set) => ({
   stats: null,
   weather: null,
   assessment: null,
+  calibrationSessionId: null,
+  setCalibrationSessionId: (calibrationSessionId) => set({ calibrationSessionId }),
+  calibrationMapPreviewActive: false,
+  setCalibrationMapPreviewActive: (calibrationMapPreviewActive) =>
+    set({ calibrationMapPreviewActive }),
   isCalculating: false,
   routeStartRef: null,
   draftPoints: [],
@@ -86,7 +98,20 @@ export const useFlightStore = create<FlightStore>((set) => ({
   setResult: (waypoints, stats, strips) => set({ waypoints, stats, strips }),
   setWeather: (weather, assessment) => set({ weather, assessment }),
   setIsCalculating: (value) => set({ isCalculating: value }),
-  loadPlan: (plan) => set({ ...plan, draftPoints: [], strips: [], routeStartRef: null }),
+  loadPlan: (plan) =>
+    set({
+      polygon: plan.polygon,
+      params: plan.params,
+      waypoints: plan.waypoints,
+      stats: plan.stats,
+      weather: plan.weather,
+      assessment: plan.assessment,
+      calibrationSessionId: plan.calibrationSessionId ?? null,
+      calibrationMapPreviewActive: false,
+      draftPoints: [],
+      strips: [],
+      routeStartRef: null,
+    }),
   resetPlan: () =>
     set({
       polygon: null,
@@ -96,6 +121,8 @@ export const useFlightStore = create<FlightStore>((set) => ({
       stats: null,
       weather: null,
       assessment: null,
+      calibrationSessionId: null,
+      calibrationMapPreviewActive: false,
       isCalculating: false,
       routeStartRef: null,
       draftPoints: [],

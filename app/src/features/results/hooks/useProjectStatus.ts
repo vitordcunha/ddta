@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ProcessingLogEntry, ProcessingStep } from '@/features/results/types'
+import { toast } from 'sonner'
+import type { ProcessingLogEntry, ProcessingPreset, ProcessingStep } from '@/features/results/types'
 import { projectsService } from '@/services/projectsService'
 
 const steps: ProcessingStep[] = [
@@ -15,9 +16,31 @@ const steps: ProcessingStep[] = [
 type RuntimeStatus = 'uploading' | 'processing' | 'completed' | 'failed'
 
 type StreamStatusPayload = {
-  status?: RuntimeStatus
+  status?: string
   progress?: number
   message?: string
+}
+
+/** API pode enviar `queued`; a UI trata como processamento ativo. */
+function normalizeRuntimeStatus(raw: string | undefined, fallback: RuntimeStatus): RuntimeStatus {
+  switch (raw) {
+    case 'completed':
+      return 'completed'
+    case 'failed':
+      return 'failed'
+    case 'processing':
+    case 'queued':
+      return 'processing'
+    case 'draft':
+    case 'created':
+    case 'uploading':
+      return 'uploading'
+    case 'cancelled':
+    case 'canceled':
+      return 'failed'
+    default:
+      return fallback
+  }
 }
 
 export function useProjectStatus(projectId: string, initialStatus: RuntimeStatus) {
@@ -27,6 +50,10 @@ export function useProjectStatus(projectId: string, initialStatus: RuntimeStatus
   const [logs, setLogs] = useState<ProcessingLogEntry[]>([])
   const timerRef = useRef<number | null>(null)
   const streamRef = useRef<EventSource | null>(null)
+  const statusRef = useRef<RuntimeStatus>(initialStatus)
+  useEffect(() => {
+    statusRef.current = status
+  }, [status])
 
   const stopTimer = useCallback(() => {
     if (timerRef.current) {
@@ -42,7 +69,17 @@ export function useProjectStatus(projectId: string, initialStatus: RuntimeStatus
     streamRef.current = null
   }, [])
 
-  useEffect(() => stopStream, [stopStream])
+  useEffect(() => {
+    setStatus(initialStatus)
+    setProgress(initialStatus === 'completed' ? 100 : 0)
+    setMessage(initialStatus === 'completed' ? 'Concluido' : 'Aguardando')
+    setLogs([])
+    stopStream()
+    // Apenas ao mudar de projeto — não quando a lista de projetos refetch e `initialStatus` muda.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, stopStream])
+
+  useEffect(() => () => stopStream(), [stopStream])
 
   const openStream = useCallback(() => {
     if (!projectId) return
@@ -53,7 +90,7 @@ export function useProjectStatus(projectId: string, initialStatus: RuntimeStatus
 
     eventSource.onmessage = (event) => {
       const payload = JSON.parse(event.data) as StreamStatusPayload
-      const incomingStatus = payload.status ?? 'processing'
+      const incomingStatus = normalizeRuntimeStatus(payload.status, 'processing')
       const incomingProgress = Math.max(0, Math.min(100, Math.round(payload.progress ?? 0)))
 
       setStatus(incomingStatus)
@@ -73,16 +110,32 @@ export function useProjectStatus(projectId: string, initialStatus: RuntimeStatus
     }
   }, [projectId, stopStream])
 
-  const startProcessing = useCallback(async () => {
-    if (!projectId) return
-    stopTimer()
-    setStatus('processing')
-    setProgress(0)
-    setMessage(steps[0].message)
-    setLogs([{ timestamp: new Date().toLocaleTimeString('pt-BR'), message: steps[0].message }])
-    await projectsService.startProcessing(projectId)
-    openStream()
-  }, [openStream, projectId, stopTimer])
+  const startProcessing = useCallback(
+    async (preset: ProcessingPreset = 'standard') => {
+      if (!projectId) return
+      stopTimer()
+      const toRestore = statusRef.current
+      setStatus('processing')
+      setProgress(0)
+      setMessage(steps[0].message)
+      setLogs([{ timestamp: new Date().toLocaleTimeString('pt-BR'), message: steps[0].message }])
+      try {
+        await projectsService.startProcessing(projectId, { preset })
+        openStream()
+      } catch {
+        setStatus(toRestore)
+        if (toRestore === 'failed') {
+          setMessage('Processamento com erro anterior')
+        } else {
+          setMessage('Aguardando processamento')
+        }
+        setProgress(toRestore === 'completed' ? 100 : 0)
+        setLogs([])
+        toast.error('Nao foi possivel iniciar o processamento. Confirme as imagens no projeto e tente de novo.')
+      }
+    },
+    [openStream, projectId, stopTimer],
+  )
 
   const cancelProcessing = useCallback(async () => {
     if (!projectId) return

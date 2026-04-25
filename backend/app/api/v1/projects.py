@@ -3,12 +3,12 @@ from io import BytesIO
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse, RedirectResponse
 from geoalchemy2.shape import from_shape
 from PIL import Image
 from shapely.geometry import shape
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -18,6 +18,7 @@ from app.core.storage.file_manager import (
     get_chunk_path,
     get_presigned_url,
     get_project_dir,
+    wipe_project_upload_scratch,
 )
 from app.db.models.project import Project
 from app.db.models.project_image import ProjectImage
@@ -31,8 +32,6 @@ from app.schemas.project import (
     ProjectResponse,
     ProjectUpdate,
 )
-from app.utils.rate_limit import limiter
-
 router = APIRouter(prefix="/projects", tags=["projects"])
 project_repository = ProjectRepository()
 
@@ -205,9 +204,7 @@ async def save_project_flightplan(
 
 
 @router.post("/{project_id}/images/upload-chunk")
-@limiter.limit(settings.rate_limit_upload)
 async def upload_chunk(
-    request: Request,
     project_id: UUID,
     file_id: str = Form(...),
     chunk_index: int = Form(..., ge=0),
@@ -216,7 +213,6 @@ async def upload_chunk(
     chunk: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
 ) -> ProjectImageResponse | dict[str, str | bool]:
-    del request
     project = await project_repository.get(db, project_id)
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
@@ -336,3 +332,31 @@ async def delete_project_image(
     image_path.unlink(missing_ok=True)
     await db.delete(image)
     await db.commit()
+
+
+@router.post("/{project_id}/images/reset-upload-session", status_code=status.HTTP_200_OK)
+async def reset_upload_session(
+    project_id: UUID, db: AsyncSession = Depends(get_db)
+) -> dict[str, int]:
+    """Remove temp chunks, image files on disk, and all project_images rows. Resets project to draft when idle."""
+    project = await project_repository.get(db, project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    if project.status in {"processing", "queued"}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot reset upload while project is processing",
+        )
+
+    wipe_project_upload_scratch(project_id)
+
+    result = await db.execute(delete(ProjectImage).where(ProjectImage.project_id == project_id))
+    deleted = int(result.rowcount or 0)
+
+    project.progress = 0
+    project.processing_task_uuid = None
+    project.odm_task_uuid = None
+    project.status = "draft"
+
+    await db.commit()
+    return {"deleted_images": deleted}

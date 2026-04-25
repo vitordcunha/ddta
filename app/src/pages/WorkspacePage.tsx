@@ -2,11 +2,13 @@ import { useEffect } from "react"
 import { useSearchParams } from "react-router-dom"
 import { FloatingPanel } from "@/components/ui/FloatingPanel"
 import { WorkspaceMapView } from "@/components/map/WorkspaceMapView"
+import { WeatherLayerMapControls } from "@/components/map/WeatherLayerMapControls"
+import { useWorkspaceMapWeather } from "@/components/map/useWorkspaceMapWeather"
 import { WorkspaceLayoutPanel } from "@/components/layout/WorkspaceLayoutPanel"
 import { WorkspaceTopBar } from "@/components/layout/WorkspaceTopBar"
 import { SettingsForm } from "@/components/workspace/SettingsForm"
 import { FlightPlannerConfigPanel } from "@/features/flight-planner/components/FlightPlannerConfigPanel"
-import { FlightPlannerMapToolbar } from "@/features/flight-planner/components/FlightPlannerMapToolbar"
+import { PlannerIconSidebar } from "@/features/flight-planner/components/PlannerIconSidebar"
 import type { PersistedFlightPlan } from "@/features/flight-planner/stores/useFlightStore"
 import { ProjectsWorkspacePanel } from "@/features/projects/components/ProjectsWorkspacePanel"
 import { useProjects } from "@/features/projects/hooks/useProjects"
@@ -199,6 +201,7 @@ export function WorkspacePage() {
 
   const showPlanChrome = panel === "plan" && Boolean(projectId)
   const showResultsChrome = panel === "results" && Boolean(projectId)
+  const mapWeather = useWorkspaceMapWeather()
 
   const mainPanel = renderWorkspacePanel(panel, {
     projectId,
@@ -213,6 +216,11 @@ export function WorkspacePage() {
         <WorkspaceMapView
           panel={panel}
           projectId={projectId}
+          weatherTiles={{
+            overlay: mapWeather.overlay,
+            openWeatherApiKey: mapWeather.openWeatherApiKey,
+            onRadarStatus: mapWeather.onRadarStatus,
+          }}
         />
       </div>
 
@@ -220,21 +228,50 @@ export function WorkspacePage() {
         className="pointer-events-none absolute inset-0 z-[5]"
         aria-hidden={!(showPlanChrome || showResultsChrome)}
       >
-        {showPlanChrome ? (
-          <div
-            className={cn("pointer-events-auto absolute z-[2000]")}
-            style={{
-              top: "max(4.5rem, calc(3.5rem + var(--safe-area-top)))",
-              left: "max(1rem, env(safe-area-inset-left, 0px))",
-            }}
-          >
-            <div className="glass-toolbar max-w-[min(20rem,calc(100vw-2rem-max(1rem,env(safe-area-inset-left,0px))-max(1rem,env(safe-area-inset-right,0px))))]">
-              <FlightPlannerMapToolbar />
-            </div>
-          </div>
-        ) : null}
         {showResultsChrome ? <ResultsMapToolsOverlay /> : null}
       </div>
+
+      {showPlanChrome ? (
+        <div
+          className="pointer-events-none absolute z-50"
+          style={{
+            top: "max(4.5rem, calc(3.5rem + var(--safe-area-top)))",
+            left: "max(0.75rem, env(safe-area-inset-left, 0px))",
+            bottom: "max(6rem, calc(0.75rem + var(--safe-area-bottom, 0px)))",
+          }}
+        >
+          <PlannerIconSidebar
+            overlay={mapWeather.overlay}
+            setOverlay={mapWeather.setOverlay}
+            openWeatherApiKey={mapWeather.openWeatherApiKey}
+            radarStatus={mapWeather.radarStatus}
+            radarMessage={mapWeather.radarMessage}
+          />
+        </div>
+      ) : null}
+
+      {!showPlanChrome ? (
+        <div className="pointer-events-none absolute inset-0 z-[36]">
+          <div
+            className="pointer-events-auto absolute flex flex-col gap-2"
+            style={{
+              left: "max(0.75rem, env(safe-area-inset-left, 0px))",
+              bottom: showResultsChrome
+                ? "max(10.5rem, calc(0.75rem + var(--safe-area-bottom, 0px)))"
+                : "max(6rem, calc(0.75rem + var(--safe-area-bottom, 0px)))",
+            }}
+          >
+            <WeatherLayerMapControls
+              placement="mapBottomLeft"
+              overlay={mapWeather.overlay}
+              setOverlay={mapWeather.setOverlay}
+              openWeatherApiKey={mapWeather.openWeatherApiKey}
+              radarStatus={mapWeather.radarStatus}
+              radarMessage={mapWeather.radarMessage}
+            />
+          </div>
+        </div>
+      ) : null}
 
       <WorkspaceTopBar />
 

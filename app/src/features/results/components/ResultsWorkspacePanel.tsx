@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import type { ProjectStatus } from '@/types/project'
 import { Badge, Card } from '@/components/ui'
 import { DownloadPanel } from '@/features/results/components/DownloadPanel'
 import { LayerSelector } from '@/features/results/components/LayerSelector'
@@ -19,8 +20,15 @@ type ResultsWorkspacePanelProps = {
 export function ResultsWorkspacePanel({ projectId }: ResultsWorkspacePanelProps) {
   const { getProject } = useProjects()
   const project = getProject(projectId)
-  const initialStatus =
-    project?.status === 'processing' || project?.status === 'completed' ? project.status : 'uploading'
+
+  const initialStatus = useMemo(() => {
+    if (!project) return 'uploading' as const
+    const s = project.status as ProjectStatus | 'queued' | 'cancelled' | 'canceled'
+    if (s === 'processing' || s === 'queued') return 'processing' as const
+    if (s === 'completed') return 'completed' as const
+    if (s === 'failed' || s === 'cancelled' || s === 'canceled') return 'failed' as const
+    return 'uploading' as const
+  }, [project])
 
   const { status, progress, message, eta, logs, startProcessing, cancelProcessing } = useProjectStatus(
     projectId,
@@ -53,8 +61,13 @@ export function ResultsWorkspacePanel({ projectId }: ResultsWorkspacePanelProps)
         </div>
       </Card>
 
-      {status === 'uploading' ? (
-        <StartProcessingPanel selectedPreset={preset} onSelectPreset={setPreset} onStart={() => void startProcessing()} />
+      {status === 'uploading' || status === 'failed' ? (
+        <StartProcessingPanel
+          selectedPreset={preset}
+          onSelectPreset={setPreset}
+          isRetry={status === 'failed'}
+          onStart={() => void startProcessing(preset)}
+        />
       ) : null}
 
       {status === 'processing' ? (

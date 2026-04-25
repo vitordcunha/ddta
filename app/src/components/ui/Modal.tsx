@@ -14,7 +14,10 @@ export function Modal({ open, onOpenChange, title, children }: ModalProps) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/60 backdrop-blur-sm" />
+        <Dialog.Overlay
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+          onClick={() => onOpenChange(false)}
+        />
         <Dialog.Content
           className={cn(
             'fixed left-1/2 top-1/2 w-[92vw] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-xl border border-neutral-800 bg-neutral-900 p-5 animate-fade-up',

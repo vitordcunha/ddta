@@ -26,3 +26,8 @@ class Project(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     odm_task_uuid: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     images = relationship("ProjectImage", back_populates="project", cascade="all, delete-orphan")
+    calibration_sessions = relationship(
+        "CalibrationSession",
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )

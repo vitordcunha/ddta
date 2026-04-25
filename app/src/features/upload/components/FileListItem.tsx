@@ -36,7 +36,9 @@ export function FileListItem({ item, onRemove }: FileListItemProps) {
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <p className="truncate text-sm font-medium text-neutral-100">{item.file.name}</p>
-            <p className="text-xs text-neutral-400">{formatBytes(item.file.size)}</p>
+            <p className="text-xs text-neutral-400">
+              {item.serverImageId && item.file.size === 0 ? 'Ja armazenada no servidor' : formatBytes(item.file.size)}
+            </p>
           </div>
           {gpsBadge}
         </div>

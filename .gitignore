@@ -57,6 +57,24 @@ backend/venv/
 htmlcov/
 
 # =========================
+# Local test / fixture data
+# =========================
+test-data/
+
+# =========================
+# Capacitor (native) — build & sync
+# =========================
+app/android/.gradle/
+app/android/**/build/
+app/android/capacitor-cordova-android-plugins/
+app/android/**/app/src/main/assets/capacitor.config.json
+app/android/**/app/src/main/assets/capacitor.plugins.json
+app/android/**/app/src/main/assets/public/
+# iOS (if/when the project is present)
+app/ios/**/App/build/
+app/ios/**/DerivedData/
+
+# =========================
 # Build / packaging
 # =========================
 build/

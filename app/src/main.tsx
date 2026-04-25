@@ -5,6 +5,9 @@ import App from '@/App'
 import { queryClient } from '@/lib/queryClient'
 import '@/styles/globals.css'
 import 'sonner/dist/styles.css'
+import { registerSW } from 'virtual:pwa-register'
+
+registerSW({ immediate: true })
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

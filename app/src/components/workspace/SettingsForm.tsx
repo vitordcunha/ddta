@@ -1,29 +1,19 @@
 import { useMemo, useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import { Card, CardBody, CardHeader, Button } from '@/components/ui'
+import {
+  DEFAULT_USER_PREFERENCES,
+  USER_PREFERENCES_STORAGE_KEY,
+  type UserPreferences,
+} from '@/constants/userPreferences'
 import { useAppContext } from '@/hooks/useAppContext'
 import { useLocalStorage } from '@/hooks/useLocalStorage'
-
-type ThemeMode = 'system' | 'dark' | 'light'
-type DistanceUnit = 'm' | 'ft'
-
-type UserPreferences = {
-  theme: ThemeMode
-  distanceUnit: DistanceUnit
-  openWeatherApiKey: string
-}
-
-const DEFAULT_PREFERENCES: UserPreferences = {
-  theme: 'system',
-  distanceUnit: 'm',
-  openWeatherApiKey: '',
-}
 
 export function SettingsForm() {
   const { workspaceId, setWorkspaceId } = useAppContext()
   const [preferences, setPreferences] = useLocalStorage<UserPreferences>(
-    'app:user-preferences',
-    DEFAULT_PREFERENCES,
+    USER_PREFERENCES_STORAGE_KEY,
+    DEFAULT_USER_PREFERENCES,
   )
   const [showWeatherKey, setShowWeatherKey] = useState(false)
 
@@ -136,6 +126,10 @@ export function SettingsForm() {
                 {showWeatherKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
               </Button>
             </div>
+            <p className="text-xs text-[#5c5c5c]">
+              Usada nas camadas de mapa (vento, nuvens, precipitacao, temperatura). O radar de chuva no mapa nao
+              precisa de chave.
+            </p>
           </div>
         </CardBody>
       </Card>

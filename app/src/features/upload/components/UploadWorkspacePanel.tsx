@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { CheckCircle2 } from 'lucide-react'
 import { GpsWarningBanner } from '@/features/upload/components/GpsWarningBanner'
@@ -8,22 +8,82 @@ import { UploadProgressList } from '@/features/upload/components/UploadProgressL
 import { useFileQueue } from '@/features/upload/hooks/useFileQueue'
 import { useUpload } from '@/features/upload/hooks/useUpload'
 import { Card } from '@/components/ui'
+import { projectsService } from '@/services/projectsService'
 
 type UploadWorkspacePanelProps = {
   projectId: string | null
 }
 
 export function UploadWorkspacePanel({ projectId }: UploadWorkspacePanelProps) {
-  const { files, addFiles, updateFile, removeFile, clearDone, stats } = useFileQueue()
-  const { uploadAll, cancelAll, isUploading, isCancelling, globalProgress } = useUpload({
+  const { files, addFiles, updateFile, removeFile, clearDone, resetQueueForRetry, resetFiles, applyServerImageList, stats } =
+    useFileQueue()
+  const { uploadAll, cancelAll, resetUploadSession, isUploading, isCancelling, globalProgress } = useUpload({
     files,
     updateFile,
     projectId: projectId ?? undefined,
+    resetQueueForRetry,
   })
+  const [isReiniciarUpload, setIsReiniciarUpload] = useState(false)
 
   const totalBytes = useMemo(() => files.reduce((sum, item) => sum + item.file.size, 0), [files])
   const isCompleted = stats.total > 0 && stats.done === stats.total
+
+  const handleReiniciarUpload = async () => {
+    if (!projectId) return
+    if (
+      !window.confirm(
+        'Cancela uploads em curso, remove todas as imagens deste projeto no servidor (incluindo ficheiros temporarios) e repoe a fila local como pendente. Continuar?',
+      )
+    ) {
+      return
+    }
+    setIsReiniciarUpload(true)
+    try {
+      await resetUploadSession()
+      toast.success('Upload reiniciado: servidor limpo e fila reposta.')
+    } catch {
+      toast.error('Nao foi possivel reiniciar o upload. Tente de novo.')
+    } finally {
+      setIsReiniciarUpload(false)
+    }
+  }
   const completionAnnounced = useRef(false)
+
+  useEffect(() => {
+    if (!projectId) {
+      resetFiles()
+      return
+    }
+    resetFiles()
+    let cancelled = false
+    void projectsService
+      .listProjectImages(projectId)
+      .then((images) => {
+        if (cancelled) return
+        applyServerImageList(images)
+      })
+      .catch(() => {
+        if (!cancelled) toast.error('Nao foi possivel carregar as imagens ja enviadas deste projeto.')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [projectId, resetFiles, applyServerImageList])
+
+  const handleRemove = (id: string) => {
+    const item = files.find((f) => f.id === id)
+    void (async () => {
+      if (item?.serverImageId && projectId) {
+        try {
+          await projectsService.deleteProjectImage(projectId, item.serverImageId)
+        } catch {
+          toast.error('Nao foi possivel remover a imagem no servidor.')
+          return
+        }
+      }
+      removeFile(id)
+    })()
+  }
 
   useEffect(() => {
     if (isCompleted && !completionAnnounced.current) {
@@ -56,7 +116,7 @@ export function UploadWorkspacePanel({ projectId }: UploadWorkspacePanelProps) {
           progress={globalProgress}
           isUploading={isUploading}
           isCancelling={isCancelling}
-          onRemove={removeFile}
+          onRemove={handleRemove}
           onUploadAll={() => void uploadAll()}
           onCancelAll={cancelAll}
         />
@@ -81,6 +141,8 @@ export function UploadWorkspacePanel({ projectId }: UploadWorkspacePanelProps) {
         isUploading={isUploading}
         onUpload={() => void uploadAll()}
         onClear={clearDone}
+        onReiniciarUpload={handleReiniciarUpload}
+        isReiniciarUpload={isReiniciarUpload}
       />
     </div>
   )

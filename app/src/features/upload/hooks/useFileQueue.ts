@@ -11,8 +11,35 @@ function updateItem(
   return items.map((item) => (item.id === id ? updater(item) : item))
 }
 
+function serverRowFromApi(img: { id: string; filename: string; has_gps: boolean }): FileQueueItem {
+  return {
+    id: img.id,
+    serverImageId: img.id,
+    file: new File([], img.filename, { type: 'image/jpeg' }),
+    status: 'done',
+    progress: 100,
+    hasGps: img.has_gps,
+    thumbnail: null,
+  }
+}
+
 export function useFileQueue() {
   const [files, setFiles] = useState<FileQueueItem[]>([])
+
+  const resetFiles = useCallback(() => {
+    setFiles([])
+  }, [])
+
+  /** Substitui linhas vindas do servidor e mantém ficheiros locais ainda nao persistidos. */
+  const applyServerImageList = useCallback(
+    (apiImages: { id: string; filename: string; has_gps: boolean }[]) => {
+      setFiles((prev) => {
+        const localOnly = prev.filter((p) => p.serverImageId == null)
+        return [...apiImages.map(serverRowFromApi), ...localOnly]
+      })
+    },
+    [],
+  )
 
   const updateFile = useCallback((id: string, patch: Partial<FileQueueItem>) => {
     setFiles((prev) => updateItem(prev, id, (item) => ({ ...item, ...patch })))
@@ -77,6 +104,17 @@ export function useFileQueue() {
     setFiles((prev) => prev.filter((item) => item.status !== 'done'))
   }, [])
 
+  const resetQueueForRetry = useCallback(() => {
+    setFiles((prev) =>
+      prev.map((item) => ({
+        ...item,
+        status: item.status === 'reading' ? 'reading' : 'pending',
+        progress: 0,
+        errorMessage: undefined,
+      })),
+    )
+  }, [])
+
   const stats = useMemo<FileQueueStats>(() => {
     return files.reduce<FileQueueStats>(
       (acc, file) => {
@@ -99,6 +137,9 @@ export function useFileQueue() {
     updateFile,
     removeFile,
     clearDone,
+    resetQueueForRetry,
+    resetFiles,
+    applyServerImageList,
     stats,
   }
 }
