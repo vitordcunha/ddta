@@ -96,16 +96,37 @@ export function generateFlightGrid(
   return strips
 }
 
+function newWaypointId(index: number): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID()
+  }
+  return `wp-${index}-${Math.random().toString(36).slice(2, 9)}`
+}
+
 export function generateWaypoints(strips: Strip[], altitudeM: number): Waypoint[] {
-  return strips.flatMap((strip, stripIndex) =>
-    strip.coordinates.map((coordinate, pointIndex) => ({
-      id: `${strip.id}-${pointIndex}`,
-      lon: coordinate[0],
+  const coords = strips.flatMap((strip) => strip.coordinates)
+  return coords.map((coordinate, index) => {
+    const toward = coords[index + 1] ?? coords[index - 1]
+    let heading = 0
+    if (toward) {
+      const bearing = turf.bearing(
+        turf.point([coordinate[0], coordinate[1]]),
+        turf.point([toward[0], toward[1]]),
+      )
+      heading = ((bearing % 360) + 360) % 360
+    }
+    return {
+      id: newWaypointId(index),
       lat: coordinate[1],
-      altitudeM,
-      stripIndex,
-    })),
-  )
+      lng: coordinate[0],
+      altitude: altitudeM,
+      altitudeMode: 'agl' as const,
+      gimbalPitch: -90,
+      heading,
+      poiOverride: false,
+      index,
+    }
+  })
 }
 
 export type RouteStartRefLngLat = { lat: number; lng: number }
@@ -115,7 +136,7 @@ function distanceMetersToFirstWaypoint(user: RouteStartRefLngLat, waypoints: Way
     return Number.POSITIVE_INFINITY
   }
   const from = turf.point([user.lng, user.lat])
-  const to = turf.point([waypoints[0]!.lon, waypoints[0]!.lat])
+  const to = turf.point([waypoints[0]!.lng, waypoints[0]!.lat])
   return turf.distance(from, to, { units: 'kilometers' }) * 1000
 }
 
@@ -123,6 +144,7 @@ function withReindexedWaypointIds(waypoints: Waypoint[]): Waypoint[] {
   return waypoints.map((w, i) => ({
     ...w,
     id: `wp-${i}`,
+    index: i,
   }))
 }
 
@@ -275,8 +297,8 @@ export function calculateStats(
 
   let distanceKm = 0
   for (let i = 0; i < waypoints.length - 1; i += 1) {
-    const current = turf.point([waypoints[i].lon, waypoints[i].lat])
-    const next = turf.point([waypoints[i + 1].lon, waypoints[i + 1].lat])
+    const current = turf.point([waypoints[i].lng, waypoints[i].lat])
+    const next = turf.point([waypoints[i + 1].lng, waypoints[i + 1].lat])
     distanceKm += turf.distance(current, next, { units: 'kilometers' })
   }
 

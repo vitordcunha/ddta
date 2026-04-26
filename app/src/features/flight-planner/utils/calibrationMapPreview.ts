@@ -52,8 +52,8 @@ export function buildCalibrationWaypointFootprintRings(
     if (!toward) continue
 
     const bearingDeg = turf.bearing(
-      turf.point([w.lon, w.lat]),
-      turf.point([toward.lon, toward.lat]),
+      turf.point([w.lng, w.lat]),
+      turf.point([toward.lng, toward.lat]),
     )
     const b = (bearingDeg * Math.PI) / 180
 
@@ -67,7 +67,7 @@ export function buildCalibrationWaypointFootprintRings(
     const ring: [number, number][] = cornerOffsets.map(([rightM, fwdM]) => {
       const deM = fwdM * Math.sin(b) + rightM * Math.cos(b)
       const dnM = fwdM * Math.cos(b) - rightM * Math.sin(b)
-      const p = offsetMeters(w.lon, w.lat, deM, dnM, cosLatRef)
+      const p = offsetMeters(w.lng, w.lat, deM, dnM, cosLatRef)
       return [p.lat, p.lon] as [number, number]
     })
     rings.push({

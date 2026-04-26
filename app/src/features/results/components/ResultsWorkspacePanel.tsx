@@ -18,6 +18,7 @@ import { extractCompletedStats } from "@/features/results/utils/extractCompleted
 import { ProjectPurgeModal } from "@/features/projects/components/ProjectPurgeModal";
 import { useProjects } from "@/features/projects/hooks/useProjects";
 import { projectsService } from "@/services/projectsService";
+import { MapRouteDeckVisibilityToggles } from "@/features/map-engine/components/MapRouteDeckVisibilityToggles";
 
 type ResultsWorkspacePanelProps = {
   projectId: string;
@@ -137,6 +138,10 @@ export function ResultsWorkspacePanel({
           Com MDS, MDT ou curvas, use o controlo vertical no mapa. Em
           ortomosaico, a opacidade é por execução no bloco abaixo.
         </p>
+        <MapRouteDeckVisibilityToggles
+          scope="results"
+          hint="No Mapbox 3D, a rota do plano de voo (se carregada) segue a altitude dos waypoints."
+        />
       </div>
 
       {project ? <ResultRunLayersPanel project={project} /> : null}

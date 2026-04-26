@@ -7,12 +7,14 @@ from app.api.v1 import (
     processing,
     processing_queue,
     projects,
+    settings_api_keys,
     sse,
     tiles,
 )
 
 api_router = APIRouter()
 api_router.include_router(projects.router)
+api_router.include_router(settings_api_keys.router)
 api_router.include_router(flightplan.router)
 api_router.include_router(flight_plans.router)
 api_router.include_router(calibration_sessions.router)

@@ -33,13 +33,8 @@ export type FlightParams = {
   speedMs: number;
 };
 
-export type Waypoint = {
-  id: string;
-  lat: number;
-  lon: number;
-  altitudeM: number;
-  stripIndex: number;
-};
+export type { PointOfInterest, Waypoint } from "@/features/flight-planner/types/waypoint";
+export { migrateWaypoint, migrateWaypoints } from "@/features/flight-planner/types/waypoint";
 
 export type Strip = {
   id: string;

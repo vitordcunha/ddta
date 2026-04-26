@@ -5,8 +5,6 @@ import {
   PanelRightClose,
   PanelRightOpen,
 } from "lucide-react";
-import { useSearchParams } from "react-router-dom";
-import { parseWorkspacePanel } from "@/constants/routes";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { cn } from "@/lib/utils";
 
@@ -27,8 +25,6 @@ export function WorkspaceLayoutPanel({
   collapsedLabel,
 }: WorkspaceLayoutPanelProps) {
   const isDesktop = useMediaQuery(DESKTOP);
-  const [searchParams] = useSearchParams();
-  const panel = parseWorkspacePanel(searchParams.get("panel"));
   const [open, setOpen] = useState(true);
   const onToggle = useCallback(() => setOpen((o) => !o), []);
 

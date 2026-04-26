@@ -7,6 +7,8 @@ import { useWorkspaceMapWeather } from "@/components/map/useWorkspaceMapWeather"
 import { WorkspaceLayoutPanel } from "@/components/layout/WorkspaceLayoutPanel";
 import { WorkspaceTopBar } from "@/components/layout/WorkspaceTopBar";
 import { SettingsForm } from "@/components/workspace/SettingsForm";
+import { FlightPlannerCalculationBridge } from "@/features/flight-planner/components/FlightPlannerCalculationBridge";
+import { WaypointEditorPanel } from "@/features/flight-planner/components/WaypointEditorPanel";
 import { FlightPlannerConfigPanel } from "@/features/flight-planner/components/FlightPlannerConfigPanel";
 import { PlannerIconSidebar } from "@/features/flight-planner/components/PlannerIconSidebar";
 import type { PersistedFlightPlan } from "@/features/flight-planner/stores/useFlightStore";
@@ -193,6 +195,7 @@ export function WorkspacePage() {
   return (
     <div className="fixed inset-0 z-0 overflow-hidden bg-[#0f0f0f] text-[#fafafa]">
       <div className="absolute inset-0 z-0">
+        {showPlanChrome ? <FlightPlannerCalculationBridge /> : null}
         <WorkspaceMapView
           panel={panel}
           projectId={projectId}
@@ -210,6 +213,19 @@ export function WorkspacePage() {
       >
         {showResultsChrome ? <ResultsMapToolsOverlay /> : null}
       </div>
+
+      {showPlanChrome && projectId ? (
+        <div
+          className="pointer-events-none absolute z-[44] flex max-w-[min(100%,20rem)] flex-col"
+          style={{
+            top: "max(4.5rem, calc(3.5rem + var(--safe-area-top)))",
+            left: "calc(max(0.75rem, env(safe-area-inset-left, 0px)) + 3.25rem)",
+            bottom: "max(6rem, calc(0.75rem + var(--safe-area-bottom, 0px)))",
+          }}
+        >
+          <WaypointEditorPanel />
+        </div>
+      ) : null}
 
       {showPlanChrome ? (
         <div

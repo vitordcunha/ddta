@@ -1,7 +1,9 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   Compass,
+  Crosshair,
   Hand,
+  Lock,
   Map as MapIcon,
   Pencil,
   Pentagon,
@@ -22,6 +24,8 @@ import { useFlightPlannerMapHotkeys } from '@/features/flight-planner/hooks/useF
 import { closeDraftToPolygon } from '@/features/flight-planner/utils/polygonDraft'
 import type { WeatherMapOverlayPreferences } from '@/components/map/weather/mapWeatherTypes'
 import type { RadarOverlayStatus } from '@/components/map/PlannerWeatherMapLayers'
+import { useMapEngine } from '@/features/map-engine'
+import type { MapProvider } from '@/features/map-engine/types'
 
 interface PlannerIconSidebarProps {
   overlay: WeatherMapOverlayPreferences
@@ -58,11 +62,22 @@ export function PlannerIconSidebar({
   const popLastDraftPoint = useFlightStore((s) => s.popLastDraftPoint)
   const setPolygon = useFlightStore((s) => s.setPolygon)
   const polygon = useFlightStore((s) => s.polygon)
+  const poi = useFlightStore((s) => s.poi)
+  const poiPlacementActive = useFlightStore((s) => s.poiPlacementActive)
+  const setPoiPlacementActive = useFlightStore((s) => s.setPoiPlacementActive)
+  const setPoi = useFlightStore((s) => s.setPoi)
 
   const hasDraft = draftPoints.length > 0
   const canClose = draftPoints.length >= 3
   const hasPolygon = Boolean(polygon)
   const showDrawActions = hasDraft || hasPolygon
+
+  const {
+    provider: mapProvider,
+    mode: mapViewMode,
+    setProvider,
+    setMode: setMapViewMode,
+  } = useMapEngine()
 
   const onClose = () => {
     if (!canClose) return
@@ -149,7 +164,7 @@ export function PlannerIconSidebar({
                   animate={{ opacity: 1, x: 0, scale: 1 }}
                   exit={{ opacity: 0, x: -6, scale: 0.97 }}
                   transition={{ duration: 0.15, ease: 'easeOut' }}
-                  className="absolute left-full top-0 z-50 ml-2 w-44 rounded-2xl border border-white/10 bg-[#0f0f0f]/95 p-3 shadow-2xl backdrop-blur-xl"
+                  className="absolute left-full top-0 z-50 ml-2 w-52 rounded-2xl border border-white/10 bg-[#0f0f0f]/95 p-3 shadow-2xl backdrop-blur-xl"
                 >
                   <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
                     Estilo do mapa
@@ -177,6 +192,76 @@ export function PlannerIconSidebar({
                       )
                     })}
                   </div>
+                  <p className="mb-2 mt-3 text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
+                    Provedor
+                  </p>
+                  <div className="flex flex-col gap-1">
+                    {(
+                      [
+                        { id: 'leaflet' as const, label: 'Leaflet' },
+                        { id: 'mapbox' as const, label: 'Mapbox' },
+                        { id: 'google' as const, label: 'Google Maps' },
+                      ] satisfies { id: MapProvider; label: string }[]
+                    ).map(({ id, label }) => {
+                      const sel = mapProvider === id
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => {
+                            setProvider(id)
+                            setMapStyleOpen(false)
+                          }}
+                          className={cn(
+                            'w-full rounded-lg border px-3 py-2 text-left text-xs font-medium transition',
+                            sel
+                              ? 'border-primary-500/40 bg-primary-500/12 text-white'
+                              : 'border-white/10 bg-white/[0.04] text-neutral-300 hover:bg-white/[0.08] hover:text-white',
+                          )}
+                        >
+                          {label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <div className="mt-3 flex items-center gap-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
+                      2D / 3D
+                    </p>
+                    {mapProvider === 'leaflet' ? (
+                      <Lock className="size-3.5 shrink-0 text-neutral-500" aria-hidden />
+                    ) : null}
+                  </div>
+                  <div className="mt-1.5 flex gap-1">
+                    <button
+                      type="button"
+                      disabled={mapProvider === 'leaflet'}
+                      onClick={() => setMapViewMode('2d')}
+                      className={cn(
+                        'flex-1 rounded-lg border px-2 py-1.5 text-[11px] font-medium transition',
+                        mapViewMode === '2d'
+                          ? 'border-primary-500/40 bg-primary-500/12 text-white'
+                          : 'border-white/10 bg-white/[0.04] text-neutral-300 hover:bg-white/[0.08]',
+                        mapProvider === 'leaflet' && 'cursor-not-allowed opacity-40 hover:bg-white/[0.04]',
+                      )}
+                    >
+                      2D
+                    </button>
+                    <button
+                      type="button"
+                      disabled={mapProvider === 'leaflet'}
+                      onClick={() => setMapViewMode('3d')}
+                      className={cn(
+                        'flex-1 rounded-lg border px-2 py-1.5 text-[11px] font-medium transition',
+                        mapViewMode === '3d'
+                          ? 'border-primary-500/40 bg-primary-500/12 text-white'
+                          : 'border-white/10 bg-white/[0.04] text-neutral-300 hover:bg-white/[0.08]',
+                        mapProvider === 'leaflet' && 'cursor-not-allowed opacity-40 hover:bg-white/[0.04]',
+                      )}
+                    >
+                      3D
+                    </button>
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -203,6 +288,32 @@ export function PlannerIconSidebar({
               transition={{ duration: 0.2 }}
             >
               <SidebarGroup>
+                <SidebarButton
+                  icon={Crosshair}
+                  label={
+                    poiPlacementActive
+                      ? 'Cancelar posicionamento do POI'
+                      : 'Adicionar ou mover POI (clique no mapa)'
+                  }
+                  active={poiPlacementActive}
+                  activeColor="green"
+                  onClick={() => setPoiPlacementActive(!poiPlacementActive)}
+                />
+                {poi ? (
+                  <>
+                    <div className="mx-2 h-px bg-white/[0.07]" />
+                    <SidebarButton
+                      icon={Trash2}
+                      label="Remover POI"
+                      onClick={() => {
+                        setPoi(null)
+                        setPoiPlacementActive(false)
+                      }}
+                      activeColor="red"
+                    />
+                  </>
+                ) : null}
+                <div className="mx-2 h-px bg-white/[0.07]" />
                 <div ref={routeRef} className="relative">
                   <SidebarButton
                     icon={Compass}

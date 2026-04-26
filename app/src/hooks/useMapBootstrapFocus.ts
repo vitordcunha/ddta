@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
 /** Centro aproximado por IP (cidade / regiao); sem chave de API (geojs.io). */
 const GEOJS_GEO_URL = "https://get.geojs.io/v1/ip/geo.json"
@@ -59,6 +59,8 @@ export function useMapBootstrapFocus({ locate }: Options): MapBootstrapFocus | n
     }
   }, [locate])
 
-  if (!internal) return null
-  return { center: internal.center, zoom: internal.zoom }
+  return useMemo(() => {
+    if (!internal) return null
+    return { center: internal.center, zoom: internal.zoom }
+  }, [internal])
 }

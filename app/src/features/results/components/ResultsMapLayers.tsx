@@ -168,21 +168,21 @@ export function ResultsMapInnerLayers({
         <GeoJSON
           key="sparse-cloud"
           data={sparseGeoJson}
-          opacity={globalLayerOpacity / 100}
           pointToLayer={(feature, latlng) => {
             const rgb = feature.properties?.color as number[] | undefined;
             const fill =
               Array.isArray(rgb) && rgb.length >= 3
                 ? `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`
                 : "#94a3b8";
+            const layerOpacity = globalLayerOpacity / 100;
             return L.circleMarker(latlng, {
               radius: 2,
               stroke: true,
               weight: 0.5,
               color: "#0f172a",
-              opacity: 0.5,
+              opacity: 0.5 * layerOpacity,
               fillColor: fill,
-              fillOpacity: 0.85,
+              fillOpacity: 0.85 * layerOpacity,
             });
           }}
         />

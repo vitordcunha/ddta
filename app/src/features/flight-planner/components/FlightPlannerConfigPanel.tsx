@@ -28,6 +28,7 @@ import {
   MapPin,
   Maximize2,
   Moon,
+  Mountain,
   Navigation,
   Ruler,
   Sun,
@@ -95,6 +96,8 @@ import {
 } from "@/features/flight-planner/utils/waypointCalculator";
 import { FlightQualityScoreBadge } from "@/features/flight-planner/components/FlightQualityScoreBadge";
 import { useCalibrationSession } from "@/features/flight-planner/hooks/useCalibrationSession";
+import { useMapEngine } from "@/features/map-engine/useMapEngine";
+import { MapRouteDeckVisibilityToggles } from "@/features/map-engine/components/MapRouteDeckVisibilityToggles";
 
 type Props = {
   projectName: string;
@@ -181,6 +184,9 @@ export function FlightPlannerConfigPanel({
     weather,
     assessment,
     isCalculating,
+    poi,
+    terrainFollowing,
+    isTerrainLoading,
     setParams,
     setWeather,
     loadPlan,
@@ -193,8 +199,18 @@ export function FlightPlannerConfigPanel({
     calibrationMapPreviewActive,
     setCalibrationMapPreviewActive,
     setPlannerInteractionMode,
+    setTerrainFollowing,
+    setPoi,
+    setPoiPlacementActive,
   } = useFlightStore();
-  const { locate, position: geoPosition, phase: geoPhase, error: geoError } = useGeolocation();
+  const { mapboxToken } = useMapEngine();
+  const hasMapboxKey = mapboxToken.trim().length > 0;
+  const {
+    locate,
+    position: geoPosition,
+    phase: geoPhase,
+    error: geoError,
+  } = useGeolocation();
   const weatherQuery = useWeather(params.droneModel, params.altitudeM);
   const kmzExport = useKmzExport(projectName);
   const kmzCalibExport = useKmzExport(projectName);
@@ -203,9 +219,9 @@ export function FlightPlannerConfigPanel({
   const [saving, setSaving] = useState(false);
   const [preFlightOpen, setPreFlightOpen] = useState(false);
   const [preFlightKey, setPreFlightKey] = useState(0);
-  const [preFlightFlow, setPreFlightFlow] = useState<
-    "mission" | "calibration"
-  >("mission");
+  const [preFlightFlow, setPreFlightFlow] = useState<"mission" | "calibration">(
+    "mission",
+  );
   const [, bumpKmzStorageRead] = useState(0);
   const skipKmzPreFlight = readPreFlightKmzModalSkip(projectId);
   const [calibrationSessions, setCalibrationSessions] = useState<
@@ -242,10 +258,10 @@ export function FlightPlannerConfigPanel({
   const calibrationOutdated = useMemo(() => {
     const snap = calibrationParamsSnapshotRef.current;
     if (!snap || !calibrationSessionId) return false;
-    const altDiff = Math.abs(params.altitudeM - snap.altitudeM)
-    const fwdDiff = Math.abs(params.forwardOverlap - snap.forwardOverlap)
-    const sideDiff = Math.abs(params.sideOverlap - snap.sideOverlap)
-    return altDiff > 10 || fwdDiff > 5 || sideDiff > 5
+    const altDiff = Math.abs(params.altitudeM - snap.altitudeM);
+    const fwdDiff = Math.abs(params.forwardOverlap - snap.forwardOverlap);
+    const sideDiff = Math.abs(params.sideOverlap - snap.sideOverlap);
+    return altDiff > 10 || fwdDiff > 5 || sideDiff > 5;
   }, [
     calibrationSessionId,
     params.altitudeM,
@@ -307,6 +323,8 @@ export function FlightPlannerConfigPanel({
           weather: state.weather,
           assessment: state.assessment,
           calibrationSessionId: state.calibrationSessionId,
+          terrainFollowing: state.terrainFollowing,
+          poi: state.poi,
         });
       }, 300);
     });
@@ -402,7 +420,7 @@ export function FlightPlannerConfigPanel({
 
   const onRequestKmzDownload = () => {
     if (skipKmzPreFlight) {
-      void kmzExport.generateAndDownload(waypoints, params);
+      void kmzExport.generateAndDownload(waypoints, params, { poi });
     } else {
       setPreFlightFlow("mission");
       setPreFlightKey((k) => k + 1);
@@ -411,9 +429,9 @@ export function FlightPlannerConfigPanel({
   };
 
   const buildFlightKmzArrayBuffer = useCallback(async () => {
-    const blob = await generateKmz(waypoints, { projectName, params });
+    const blob = await generateKmz(waypoints, { projectName, params, poi });
     return await blob.arrayBuffer();
-  }, [params, projectName, waypoints]);
+  }, [params, poi, projectName, waypoints]);
 
   const saveCurrentPlan = async () => {
     if (saving) return;
@@ -425,6 +443,8 @@ export function FlightPlannerConfigPanel({
       weather,
       assessment,
       calibrationSessionId,
+      terrainFollowing,
+      poi,
     };
     setSaving(true);
     try {
@@ -702,6 +722,118 @@ export function FlightPlannerConfigPanel({
           hint="Altura em relacao ao ponto de decolagem (modo comum nos apps DJI). Relevo forte exige planejamento extra; confirme limites legais e autorizacoes na sua regiao."
           onChange={(v) => setParams({ altitudeM: v })}
         />
+        <div className="rounded-lg border border-white/10 p-3 space-y-2.5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-xs text-neutral-200">
+                <Mountain
+                  className="size-3.5 shrink-0 text-primary-400/80"
+                  aria-hidden
+                />
+                <span className="font-medium">
+                  Seguir o relevo (terrain following)
+                </span>
+              </div>
+              <p className="mt-0.5 text-[10px] leading-snug text-neutral-500">
+                Ajusta a altitude (AMSL) de cada ponto a partir do modelo Mapbox
+                Terrain RGB, mantendo a altura AGL {params.altitudeM} m
+                aproximada sobre o terreno.
+                {!hasMapboxKey
+                  ? " Adicione a chave Mapbox em Configuracoes para ativar os dados de relevo."
+                  : null}
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              className="size-4 shrink-0 cursor-pointer rounded border border-white/20 bg-white/[0.04] text-primary-500"
+              checked={terrainFollowing}
+              onChange={(e) => setTerrainFollowing(e.target.checked)}
+              title="Ativar ajuste de altitude ao terreno"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {terrainFollowing && isTerrainLoading ? (
+              <Badge
+                variant="processing"
+                className="gap-1.5 pl-1.5 text-[10px] font-medium"
+              >
+                <Loader2 className="size-2.5 animate-spin" aria-hidden />A
+                buscar elevação…
+              </Badge>
+            ) : null}
+            {!terrainFollowing ? (
+              <Badge variant="info" className="text-[10px] font-medium">
+                AGL uniforme
+              </Badge>
+            ) : isTerrainLoading ? null : hasMapboxKey ? (
+              <Badge variant="success" className="text-[10px] font-medium">
+                Adaptado ao terreno
+              </Badge>
+            ) : (
+              <Badge variant="warning" className="text-[10px] font-medium">
+                Relevo: voo plano
+              </Badge>
+            )}
+          </div>
+        </div>
+        {hasPlan ? (
+          <div className="rounded-lg border border-white/10 p-3 space-y-2.5">
+            <div className="flex items-center gap-2 text-xs text-neutral-200">
+              <Focus
+                className="size-3.5 shrink-0 text-cyan-400/90"
+                aria-hidden
+              />
+              <span className="font-medium">Ponto de interesse (POI)</span>
+            </div>
+            <p className="text-[10px] leading-snug text-neutral-500">
+              Alvo comum para heading e gimbal nos waypoints sem «Ignorar POI».
+              Use «Adicionar POI» na barra lateral e clique no mapa, ou ajuste a
+              altitude AMSL do alvo abaixo.
+            </p>
+            {poi ? (
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                <label className="grid min-w-0 flex-1 gap-1 text-[11px] text-neutral-400">
+                  Altitude AMSL do POI (m)
+                  <input
+                    type="number"
+                    className="input-base font-mono text-xs"
+                    value={
+                      Number.isFinite(poi.altitude)
+                        ? Math.round(poi.altitude)
+                        : 0
+                    }
+                    min={-200}
+                    max={9000}
+                    step={1}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (!Number.isFinite(v)) return;
+                      setPoi({ ...poi, altitude: v });
+                    }}
+                  />
+                </label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 border-white/15 text-xs"
+                  onClick={() => {
+                    setPoi(null);
+                    setPoiPlacementActive(false);
+                  }}
+                >
+                  Remover POI
+                </Button>
+              </div>
+            ) : (
+              <p className="text-[11px] text-neutral-500">
+                Nenhum POI ativo. Ative «Adicionar POI» na barra do mapa e
+                clique na posição desejada.
+              </p>
+            )}
+          </div>
+        ) : null}
+        <MapRouteDeckVisibilityToggles scope="plan" />
         <Range
           label="Sobreposicao frontal"
           value={params.forwardOverlap}
@@ -742,33 +874,44 @@ export function FlightPlannerConfigPanel({
               disabled={geoPhase === "loading"}
               title="Calcula o angulo otimo e define o ponto de inicio mais proximo da sua posicao"
               onClick={() => {
-                const spec = getDroneSpec(params.droneModel)
-                const gsdM = calculateGsd(params.altitudeM, spec)
-                const footprint = calculateFootprint(gsdM, spec)
-                const spacings = calculateSpacings(footprint, params.forwardOverlap, params.sideOverlap)
+                const spec = getDroneSpec(params.droneModel);
+                const gsdM = calculateGsd(params.altitudeM, spec);
+                const footprint = calculateFootprint(gsdM, spec);
+                const spacings = calculateSpacings(
+                  footprint,
+                  params.forwardOverlap,
+                  params.sideOverlap,
+                );
 
-                const applyWithLocation = (userPos: { lat: number; lng: number }) => {
-                  setRouteStartRef({ lat: userPos.lat, lng: userPos.lng })
+                const applyWithLocation = (userPos: {
+                  lat: number;
+                  lng: number;
+                }) => {
+                  setRouteStartRef({ lat: userPos.lat, lng: userPos.lng });
                   const optimal = calculateOptimalRotation(
                     polygon,
                     spacings,
                     params.altitudeM,
                     userPos,
-                  )
-                  setParams({ rotationDeg: optimal })
-                }
+                  );
+                  setParams({ rotationDeg: optimal });
+                };
 
                 // Usa posicao em cache se disponivel, caso contrario requisita nova
                 if (geoPosition) {
-                  applyWithLocation(geoPosition)
+                  applyWithLocation(geoPosition);
                 } else {
                   void locate()
                     .then(applyWithLocation)
                     .catch(() => {
                       // Sem localizacao: otimiza so pelo angulo, sem alterar routeStartRef
-                      const optimal = calculateOptimalRotation(polygon, spacings, params.altitudeM)
-                      setParams({ rotationDeg: optimal })
-                    })
+                      const optimal = calculateOptimalRotation(
+                        polygon,
+                        spacings,
+                        params.altitudeM,
+                      );
+                      setParams({ rotationDeg: optimal });
+                    });
                 }
               }}
             >
@@ -780,7 +923,9 @@ export function FlightPlannerConfigPanel({
               Auto-rotacao
             </Button>
             <p className="text-[10px] text-neutral-500">
-              {routeStartRef ? "Angulo + inicio otimizados" : "Angulo + inicio pela sua posicao"}
+              {routeStartRef
+                ? "Angulo + inicio otimizados"
+                : "Angulo + inicio pela sua posicao"}
             </p>
           </div>
         )}
@@ -919,7 +1064,7 @@ export function FlightPlannerConfigPanel({
 
               {/* Estimativa de precisao posicional */}
               {(() => {
-                const p = estimatePrecision(stats.gsdCm)
+                const p = estimatePrecision(stats.gsdCm);
                 return (
                   <div className="mt-2 rounded-lg border border-white/[0.07] bg-white/[0.03] px-3 py-2.5 text-[11px]">
                     <p className="mb-1.5 font-medium text-neutral-400">
@@ -950,7 +1095,7 @@ export function FlightPlannerConfigPanel({
                       </span>
                     </p>
                   </div>
-                )
+                );
               })()}
             </motion.div>
           ) : (
@@ -981,9 +1126,7 @@ export function FlightPlannerConfigPanel({
         title="Janela de voo estimada"
         startsExpanded={false}
         riskLevel={solarSectionRisk}
-        leadingIcon={
-          <Sun className="text-amber-300/90" aria-hidden />
-        }
+        leadingIcon={<Sun className="text-amber-300/90" aria-hidden />}
       >
         {solarPanelLines && polygonCenter ? (
           <>
@@ -1227,9 +1370,10 @@ export function FlightPlannerConfigPanel({
         riskLevel="none"
       >
         <p className="text-[11px] leading-snug text-neutral-500">
-          Área reduzida no centro do polígono, mesmos parâmetros de overlap. Pré-visualize no mapa a grade de
-          fotos e a rota; depois confirme para abrir o resumo «Antes de voar» com checklist e exportação do KMZ
-          de teste.
+          Área reduzida no centro do polígono, mesmos parâmetros de overlap.
+          Pré-visualize no mapa a grade de fotos e a rota; depois confirme para
+          abrir o resumo «Antes de voar» com checklist e exportação do KMZ de
+          teste.
         </p>
         {calibrationMission ? (
           <ul className="mt-2 space-y-1 text-[11px] text-neutral-400">
@@ -1253,7 +1397,8 @@ export function FlightPlannerConfigPanel({
           </ul>
         ) : (
           <p className="mt-2 text-xs text-amber-200/85">
-            Desenhe a área e aguarde o cálculo da rota principal para gerar o recorte de calibração.
+            Desenhe a área e aguarde o cálculo da rota principal para gerar o
+            recorte de calibração.
           </p>
         )}
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -1369,10 +1514,7 @@ export function FlightPlannerConfigPanel({
                     }}
                   >
                     {deletingCalibrationSessionId === s.id ? (
-                      <Loader2
-                        className="size-3.5 animate-spin"
-                        aria-hidden
-                      />
+                      <Loader2 className="size-3.5 animate-spin" aria-hidden />
                     ) : (
                       <Trash2 className="size-3.5" aria-hidden />
                     )}
@@ -1384,9 +1526,15 @@ export function FlightPlannerConfigPanel({
         )}
         {calibrationOutdated && (
           <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-[11px] leading-snug text-amber-200/90">
-            <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-amber-400" aria-hidden />
+            <TriangleAlert
+              className="mt-0.5 size-3.5 shrink-0 text-amber-400"
+              aria-hidden
+            />
             <span>
-              <span className="font-medium">Calibração desatualizada:</span> altitude ou sobreposição mudou significativamente desde o último voo de calibração. Considere refazer a calibração com os parâmetros atuais.
+              <span className="font-medium">Calibração desatualizada:</span>{" "}
+              altitude ou sobreposição mudou significativamente desde o último
+              voo de calibração. Considere refazer a calibração com os
+              parâmetros atuais.
             </span>
           </div>
         )}
@@ -1520,7 +1668,7 @@ export function FlightPlannerConfigPanel({
         calibrationSessionRevision={calibrationSessionRevision}
         onRequestCalibrationUpload={() => setCalibrationUploadOpen(true)}
         onConfirmDownload={() => {
-          void kmzExport.generateAndDownload(waypoints, params);
+          void kmzExport.generateAndDownload(waypoints, params, { poi });
         }}
         onCalibrationDownload={async () => {
           if (!calibrationMission) return;
@@ -1549,6 +1697,7 @@ export function FlightPlannerConfigPanel({
               params,
               {
                 variant: "calibration",
+                poi: null,
               },
             );
             toast.success("Sessão de calibração criada e KMZ baixado.");
@@ -1860,14 +2009,30 @@ function SolarArc({
         {/* Sol / lua conforme elevação (e azimute no plano); alinhado ao modelo de `getSunPositionDeg` */}
         {!sunBelow ? (
           <>
-            <circle cx={dot.cx} cy={dot.cy} r="7" fill="rgba(251,191,36,0.15)" />
+            <circle
+              cx={dot.cx}
+              cy={dot.cy}
+              r="7"
+              fill="rgba(251,191,36,0.15)"
+            />
             <circle cx={dot.cx} cy={dot.cy} r="4" fill="rgba(251,191,36,0.9)" />
             <circle cx={dot.cx} cy={dot.cy} r="2" fill="white" opacity="0.8" />
           </>
         ) : (
           <>
-            <circle cx={dot.cx} cy={dot.cy} r="5" fill="rgba(147,197,253,0.7)" />
-            <circle cx={dot.cx} cy={dot.cy} r="2.5" fill="white" opacity="0.6" />
+            <circle
+              cx={dot.cx}
+              cy={dot.cy}
+              r="5"
+              fill="rgba(147,197,253,0.7)"
+            />
+            <circle
+              cx={dot.cx}
+              cy={dot.cy}
+              r="2.5"
+              fill="white"
+              opacity="0.6"
+            />
           </>
         )}
 

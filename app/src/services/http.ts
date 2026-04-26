@@ -12,7 +12,14 @@ export const http = axios.create({
 http.interceptors.request.use((config) => {
   const headers = config.headers;
   if (!headers["X-Workspace-Id"]) {
-    headers["X-Workspace-Id"] = defaultWorkspaceId;
+    let ws = defaultWorkspaceId;
+    try {
+      const fromStorage = localStorage.getItem("app:workspace-id")?.trim();
+      if (fromStorage) ws = fromStorage;
+    } catch {
+      /* ignore */
+    }
+    headers["X-Workspace-Id"] = ws;
   }
   return config;
 });

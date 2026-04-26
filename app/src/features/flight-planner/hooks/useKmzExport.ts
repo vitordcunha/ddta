@@ -1,16 +1,24 @@
-import { useState } from 'react'
-import { generateKmz, type KmzVariant } from '@/features/flight-planner/utils/kmzBuilder'
-import type { FlightParams, Waypoint } from '@/features/flight-planner/types'
+import { useState } from "react";
+import {
+  generateKmz,
+  type KmzVariant,
+} from "@/features/flight-planner/utils/kmzBuilder";
+import type {
+  FlightParams,
+  PointOfInterest,
+  Waypoint,
+} from "@/features/flight-planner/types";
 
-type ExportStatus = 'idle' | 'generating' | 'done' | 'error'
+type ExportStatus = "idle" | "generating" | "done" | "error";
 
 export type KmzExportOptions = {
-  variant?: KmzVariant
-}
+  variant?: KmzVariant;
+  poi?: PointOfInterest | null;
+};
 
 export function useKmzExport(projectName: string) {
-  const [status, setStatus] = useState<ExportStatus>('idle')
-  const [kmzBlob, setKmzBlob] = useState<Blob | null>(null)
+  const [status, setStatus] = useState<ExportStatus>("idle");
+  const [kmzBlob, setKmzBlob] = useState<Blob | null>(null);
 
   const generateAndDownload = async (
     waypoints: Waypoint[],
@@ -18,26 +26,33 @@ export function useKmzExport(projectName: string) {
     options?: KmzExportOptions,
   ) => {
     try {
-      setStatus('generating')
-      const variant = options?.variant
-      const blob = await generateKmz(waypoints, { projectName, params, variant })
-      setKmzBlob(blob)
+      setStatus("generating");
+      const variant = options?.variant;
+      const blob = await generateKmz(waypoints, {
+        projectName,
+        params,
+        variant,
+        poi: options?.poi,
+      });
+      setKmzBlob(blob);
 
-      const url = URL.createObjectURL(blob)
-      const anchor = document.createElement('a')
-      anchor.href = url
-      const slug = projectName.replaceAll(/\s+/g, '-').toLowerCase()
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      const slug = projectName.replaceAll(/\s+/g, "-").toLowerCase();
       anchor.download =
-        variant === 'calibration' ? `${slug}-calibration.kmz` : `${slug}-flight-plan.kmz`
-      anchor.click()
-      URL.revokeObjectURL(url)
+        variant === "calibration"
+          ? `${slug}-calibration.kmz`
+          : `${slug}-flight-plan.kmz`;
+      anchor.click();
+      URL.revokeObjectURL(url);
 
-      setStatus('done')
-      window.setTimeout(() => setStatus('idle'), 1800)
+      setStatus("done");
+      window.setTimeout(() => setStatus("idle"), 1800);
     } catch {
-      setStatus('error')
+      setStatus("error");
     }
-  }
+  };
 
-  return { status, kmzBlob, generateAndDownload }
+  return { status, kmzBlob, generateAndDownload };
 }

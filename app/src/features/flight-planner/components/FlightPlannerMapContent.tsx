@@ -1,5 +1,6 @@
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import * as turf from "@turf/turf";
+import type * as GeoJSON from "geojson";
 import L, { type DivIcon } from "leaflet";
 import {
   CircleMarker,
@@ -10,8 +11,13 @@ import {
   useMap,
   useMapEvents,
 } from "react-leaflet";
+import { useMapEngine } from "@/features/map-engine/useMapEngine";
+import { createMapboxElevationService } from "@/features/flight-planner/services/elevationService";
 import { useFlightStore } from "@/features/flight-planner/stores/useFlightStore";
 import type { Waypoint } from "@/features/flight-planner/types";
+import type { PointOfInterest } from "@/features/flight-planner/types/poi";
+import { newPointOfInterest } from "@/features/flight-planner/types/poi";
+import { applyTerrainToWaypoints } from "@/features/flight-planner/utils/terrainFollowingApply";
 import { buildCalibrationMission } from "@/features/flight-planner/utils/calibrationPlan";
 import {
   buildCalibrationWaypointFootprintRings,
@@ -23,7 +29,7 @@ import {
 } from "@/features/flight-planner/utils/polygonDraft";
 
 function formatWpLine(w: Waypoint) {
-  return `${w.lat.toFixed(6)}, ${w.lon.toFixed(6)} | ${w.altitudeM}m`;
+  return `${w.lat.toFixed(6)}, ${w.lng.toFixed(6)} | ${w.altitude}m`;
 }
 
 /** Mesmo `t` que `buildCalibrationWaypointFootprintRings` usa para a cor da área da foto. */
@@ -46,6 +52,213 @@ function photoPreviewPathOptions(t: number) {
     fillColor: `hsl(${h} 80% 42%)`,
     fillOpacity: 0.52,
   };
+}
+
+function mkMissionWpIcon(dPx: number, fill: string, stroke: string, strokeW: number): DivIcon {
+  const pad = 3;
+  const size = dPx + pad * 2;
+  return L.divIcon({
+    className: "plan-wp-mission-icon",
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    html: `<div style="width:${dPx}px;height:${dPx}px;border-radius:50%;background:${fill};border:${strokeW}px solid ${stroke};box-sizing:border-box;margin:${pad}px"/>`,
+  });
+}
+
+function mkPoiIcon(): DivIcon {
+  const s = 30;
+  return L.divIcon({
+    className: "plan-poi-icon",
+    iconSize: [s, s],
+    iconAnchor: [s / 2, s / 2],
+    html: `<div style="width:${s}px;height:${s}px;display:flex;align-items:center;justify-content:center;margin:0;border-radius:50%;background:rgba(6,182,212,0.35);border:2px solid #22d3ee;box-shadow:0 0 0 2px rgba(15,23,42,0.65)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ecfeff" stroke-width="2" aria-hidden="true">
+        <circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/>
+        <line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/>
+      </svg>
+    </div>`,
+  });
+}
+
+const POI_LEAFLET_ICON = mkPoiIcon();
+
+function PlanPoiLeafletMarker({ poi }: { poi: PointOfInterest }) {
+  const setPoi = useFlightStore((s) => s.setPoi);
+  return (
+    <Marker
+      position={[poi.lat, poi.lng]}
+      icon={POI_LEAFLET_ICON}
+      zIndexOffset={900}
+      draggable
+      eventHandlers={{
+        dragend: (ev) => {
+          const marker = ev.target as L.Marker;
+          const ll = marker.getLatLng();
+          setPoi({ ...poi, lat: ll.lat, lng: ll.lng });
+        },
+      }}
+    >
+      <Tooltip direction="top" offset={[0, -8]}>
+        POI — arraste para mover
+      </Tooltip>
+    </Marker>
+  );
+}
+
+const WP_MISSION_ICON = {
+  single: mkMissionWpIcon(16, "#3ecf8e", "#14532d", 2),
+  singleMuted: mkMissionWpIcon(16, "#a8a29e", "#57534e", 2),
+  start: mkMissionWpIcon(16, "#3ecf8e", "#14532d", 2),
+  startMuted: mkMissionWpIcon(16, "#a8a29e", "#57534e", 2),
+  end: mkMissionWpIcon(16, "#f87171", "#7f1d1d", 2),
+  endMuted: mkMissionWpIcon(16, "#78716c", "#44403c", 2),
+  mid: mkMissionWpIcon(10, "#e5e5e5", "#fafafa", 1),
+  midMuted: mkMissionWpIcon(10, "#94a3b8", "#cbd5e1", 1),
+} as const;
+
+function PlanMissionWaypointMarkers({
+  waypoints,
+  muteFullMission,
+}: {
+  waypoints: Waypoint[];
+  muteFullMission: boolean;
+}) {
+  const setSelectedWaypoint = useFlightStore((s) => s.setSelectedWaypoint);
+  const { mapboxToken } = useMapEngine();
+  const dragTerrainSerial = useRef(0);
+
+  const onDragEnd = useCallback(
+    (id: string) => (e: L.LeafletEvent) => {
+      const marker = e.target as L.Marker;
+      const ll = marker.getLatLng();
+      const lat = ll.lat;
+      const lng = ll.lng;
+      const state = useFlightStore.getState();
+      const w0 = state.waypoints.find((x) => x.id === id);
+      if (!w0) return;
+
+      const patch: Partial<Waypoint> = { lat, lng };
+      state.updateWaypoint(id, patch);
+
+      if (!state.terrainFollowing) return;
+
+      const serial = ++dragTerrainSerial.current;
+      const svc = createMapboxElevationService(mapboxToken);
+      const pts = useFlightStore
+        .getState()
+        .waypoints.map((w) => [w.lat, w.lng] as [number, number]);
+      void svc
+        .getElevations(pts)
+        .then((els) => {
+          if (dragTerrainSerial.current !== serial) return;
+          const s2 = useFlightStore.getState();
+          s2.setResult(
+            applyTerrainToWaypoints(s2.waypoints, s2.params.altitudeM, els),
+            s2.stats,
+            s2.strips,
+          );
+        })
+        .catch(() => {
+          if (dragTerrainSerial.current !== serial) return;
+          const s2 = useFlightStore.getState();
+          const zero = new Array(s2.waypoints.length).fill(0);
+          s2.setResult(
+            applyTerrainToWaypoints(s2.waypoints, s2.params.altitudeM, zero),
+            s2.stats,
+            s2.strips,
+          );
+        });
+    },
+    [mapboxToken],
+  );
+
+  const draggable = !muteFullMission;
+
+  if (waypoints.length === 0) return null;
+
+  if (waypoints.length === 1) {
+    const w = waypoints[0]!;
+    const icon = muteFullMission ? WP_MISSION_ICON.singleMuted : WP_MISSION_ICON.single;
+    return (
+      <Marker
+        key={`wp-mission-${w.id}`}
+        position={[w.lat, w.lng]}
+        icon={icon}
+        draggable={draggable}
+        zIndexOffset={600}
+        eventHandlers={{
+          click: () => setSelectedWaypoint(w.id),
+          dragend: onDragEnd(w.id),
+        }}
+      >
+        <Tooltip direction="top" offset={[0, -8]}>
+          <span className="font-medium">Inicio e fim da rota</span>
+          <br />
+          {formatWpLine(w)}
+        </Tooltip>
+      </Marker>
+    );
+  }
+
+  const first = waypoints[0]!;
+  const last = waypoints[waypoints.length - 1]!;
+
+  return (
+    <>
+      {waypoints.slice(1, -1).map((waypoint) => {
+        const icon = muteFullMission ? WP_MISSION_ICON.midMuted : WP_MISSION_ICON.mid;
+        return (
+          <Marker
+            key={`wp-mission-${waypoint.id}`}
+            position={[waypoint.lat, waypoint.lng]}
+            icon={icon}
+            draggable={draggable}
+            zIndexOffset={400}
+            eventHandlers={{
+              click: () => setSelectedWaypoint(waypoint.id),
+              dragend: onDragEnd(waypoint.id),
+            }}
+          >
+            <Tooltip>{formatWpLine(waypoint)}</Tooltip>
+          </Marker>
+        );
+      })}
+      <Marker
+        key={`wp-mission-start-${first.id}`}
+        position={[first.lat, first.lng]}
+        icon={muteFullMission ? WP_MISSION_ICON.startMuted : WP_MISSION_ICON.start}
+        draggable={draggable}
+        zIndexOffset={600}
+        eventHandlers={{
+          click: () => setSelectedWaypoint(first.id),
+          dragend: onDragEnd(first.id),
+        }}
+      >
+        <Tooltip direction="top" offset={[0, -8]}>
+          <span className="font-medium">Inicio da rota</span>
+          <br />
+          {formatWpLine(first)}
+        </Tooltip>
+      </Marker>
+      <Marker
+        key={`wp-mission-end-${last.id}`}
+        position={[last.lat, last.lng]}
+        icon={muteFullMission ? WP_MISSION_ICON.endMuted : WP_MISSION_ICON.end}
+        draggable={draggable}
+        zIndexOffset={500}
+        eventHandlers={{
+          click: () => setSelectedWaypoint(last.id),
+          dragend: onDragEnd(last.id),
+        }}
+      >
+        <Tooltip direction="top" offset={[0, -8]}>
+          <span className="font-medium">Fim da rota</span>
+          <br />
+          {formatWpLine(last)}
+        </Tooltip>
+      </Marker>
+    </>
+  );
 }
 
 /** Ordem de captura (1-based); cores alinhadas ao footprint do mesmo waypoint. */
@@ -89,19 +302,17 @@ function MapFitCalibrationPreview({
     const lonLatRing = calRingLonLat.map(
       ([lat, lon]) => [lon, lat] as [number, number],
     );
-    const feats: turf.helpers.Feature[] = [
-      turf.polygon([[...lonLatRing, lonLatRing[0]!]]),
+    const feats: GeoJSON.Feature[] = [
+      turf.polygon([[...lonLatRing, lonLatRing[0]!]]) as GeoJSON.Feature,
     ];
     for (const r of rings) {
       const closed = r.ringLatLng.map(([lat, lon]) => [lon, lat] as [number, number]);
       if (closed.length >= 3) {
-        feats.push(turf.polygon([[...closed, closed[0]!]]));
+        feats.push(turf.polygon([[...closed, closed[0]!]]) as GeoJSON.Feature);
       }
     }
     if (routeLatLng.length >= 2) {
-      feats.push(
-        turf.lineString(routeLatLng.map(([lat, lon]) => [lon, lat])),
-      );
+      feats.push(turf.lineString(routeLatLng.map(([lat, lon]) => [lon, lat])) as GeoJSON.Feature);
     }
     const b = turf.bbox(turf.featureCollection(feats));
     map.invalidateSize();
@@ -118,6 +329,7 @@ function MapFitCalibrationPreview({
 
 export function FlightPlannerMapContent() {
   const polygon = useFlightStore((s) => s.polygon);
+  const poi = useFlightStore((s) => s.poi);
   const waypoints = useFlightStore((s) => s.waypoints);
   const strips = useFlightStore((s) => s.strips);
   const draftPoints = useFlightStore((s) => s.draftPoints);
@@ -157,7 +369,7 @@ export function FlightPlannerMapContent() {
   const calibrationRouteLatLng = useMemo(() => {
     if (!calibrationMission) return [];
     return calibrationMission.waypoints.map(
-      (w) => [w.lat, w.lon] as [number, number],
+      (w) => [w.lat, w.lng] as [number, number],
     );
   }, [calibrationMission]);
 
@@ -256,7 +468,7 @@ export function FlightPlannerMapContent() {
       ))}
       {waypoints.length > 1 ? (
         <Polyline
-          positions={waypoints.map((w) => [w.lat, w.lon])}
+          positions={waypoints.map((w) => [w.lat, w.lng])}
           pathOptions={
             muteFullMission
               ? {
@@ -276,116 +488,11 @@ export function FlightPlannerMapContent() {
           }
         />
       ) : null}
-      {waypoints.length === 0 ? null : waypoints.length === 1 ? (
-        <CircleMarker
-          key={`wp-single-${waypoints[0]!.id}`}
-          center={[waypoints[0]!.lat, waypoints[0]!.lon]}
-          radius={muteFullMission ? 7 : 9}
-          pathOptions={
-            muteFullMission
-              ? {
-                  color: "#57534e",
-                  weight: 2,
-                  fillColor: "#a8a29e",
-                  fillOpacity: 0.95,
-                }
-              : {
-                  color: "#14532d",
-                  weight: 2.5,
-                  fillColor: "#3ecf8e",
-                  fillOpacity: 1,
-                }
-          }
-        >
-          <Tooltip direction="top" offset={[0, -8]}>
-            <span className="font-medium">Inicio e fim da rota</span>
-            <br />
-            {formatWpLine(waypoints[0]!)}
-          </Tooltip>
-        </CircleMarker>
-      ) : (
-        <>
-          {waypoints.slice(1, -1).map((waypoint) => (
-            <CircleMarker
-              key={waypoint.id}
-              center={[waypoint.lat, waypoint.lon]}
-              radius={muteFullMission ? 2.5 : 3}
-              pathOptions={
-                muteFullMission
-                  ? {
-                      color: "#cbd5e1",
-                      weight: 1,
-                      fillColor: "#94a3b8",
-                      fillOpacity: 0.75,
-                    }
-                  : {
-                      color: "#fafafa",
-                      weight: 1,
-                      fillColor: "#e5e5e5",
-                      fillOpacity: 0.95,
-                    }
-              }
-            >
-              <Tooltip>{formatWpLine(waypoint)}</Tooltip>
-            </CircleMarker>
-          ))}
-          <CircleMarker
-            key={`wp-start-${waypoints[0]!.id}`}
-            center={[waypoints[0]!.lat, waypoints[0]!.lon]}
-            radius={muteFullMission ? 7 : 9}
-            pathOptions={
-              muteFullMission
-                ? {
-                    color: "#57534e",
-                    weight: 2,
-                    fillColor: "#a8a29e",
-                    fillOpacity: 0.95,
-                  }
-                : {
-                    color: "#14532d",
-                    weight: 2.5,
-                    fillColor: "#3ecf8e",
-                    fillOpacity: 1,
-                  }
-            }
-          >
-            <Tooltip direction="top" offset={[0, -8]}>
-              <span className="font-medium">Inicio da rota</span>
-              <br />
-              {formatWpLine(waypoints[0]!)}
-            </Tooltip>
-          </CircleMarker>
-          <CircleMarker
-            key={`wp-end-${waypoints[waypoints.length - 1]!.id}`}
-            center={[
-              waypoints[waypoints.length - 1]!.lat,
-              waypoints[waypoints.length - 1]!.lon,
-            ]}
-            radius={muteFullMission ? 7 : 9}
-            pathOptions={
-              muteFullMission
-                ? {
-                    color: "#44403c",
-                    weight: 2,
-                    fillColor: "#78716c",
-                    fillOpacity: 0.95,
-                  }
-                : {
-                    color: "#7f1d1d",
-                    weight: 2.5,
-                    fillColor: "#f87171",
-                    fillOpacity: 1,
-                  }
-            }
-          >
-            <Tooltip direction="top" offset={[0, -8]}>
-              <span className="font-medium">Fim da rota</span>
-              <br />
-              {formatWpLine(waypoints[waypoints.length - 1]!)}
-            </Tooltip>
-          </CircleMarker>
-        </>
-      )}
+      <PlanMissionWaypointMarkers
+        waypoints={waypoints}
+        muteFullMission={muteFullMission}
+      />
+      {poi ? <PlanPoiLeafletMarker poi={poi} /> : null}
 
       {calibrationMission && calibrationMapPreviewActive ? (
         <>
@@ -442,7 +549,7 @@ export function FlightPlannerMapContent() {
                 return (
                   <Marker
                     key={`cal-photo-order-${w.id}`}
-                    position={[w.lat, w.lon]}
+                    position={[w.lat, w.lng]}
                     icon={icon}
                     zIndexOffset={800}
                   >
@@ -469,6 +576,22 @@ export function FlightPlannerMapContent() {
 function MapDrawInteraction() {
   useMapEvents({
     click: (e) => {
+      const st = useFlightStore.getState();
+      if (st.poiPlacementActive) {
+        if (st.poi) {
+          st.setPoi({ ...st.poi, lat: e.latlng.lat, lng: e.latlng.lng });
+        } else {
+          st.setPoi(
+            newPointOfInterest(
+              e.latlng.lat,
+              e.latlng.lng,
+              st.waypoints,
+              st.params.altitudeM,
+            ),
+          );
+        }
+        return;
+      }
       const {
         plannerInteractionMode,
         draftPoints,
@@ -494,13 +617,15 @@ function MapDrawInteraction() {
 
 function MapPlannerCursor() {
   const mode = useFlightStore((s) => s.plannerInteractionMode);
+  const poiPlacementActive = useFlightStore((s) => s.poiPlacementActive);
   const map = useMap();
   useEffect(() => {
     const el = map.getContainer();
-    el.style.cursor = mode === "draw" ? "crosshair" : "";
+    el.style.cursor =
+      mode === "draw" || poiPlacementActive ? "crosshair" : "";
     return () => {
       el.style.cursor = "";
     };
-  }, [map, mode]);
+  }, [map, mode, poiPlacementActive]);
   return null;
 }
