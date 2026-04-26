@@ -1,6 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import {
-  Compass,
   Crosshair,
   Hand,
   Lock,
@@ -19,7 +18,6 @@ import {
   getPlannerBaseLayerConfig,
 } from '@/features/flight-planner/constants/mapBaseLayers'
 import { FlightPlannerModeHint } from '@/features/flight-planner/components/FlightPlannerModeHint'
-import { FlightPlannerRouteControls } from '@/features/flight-planner/components/FlightPlannerRouteControls'
 import { useFlightPlannerMapHotkeys } from '@/features/flight-planner/hooks/useFlightPlannerMapHotkeys'
 import { closeDraftToPolygon } from '@/features/flight-planner/utils/polygonDraft'
 import type { WeatherMapOverlayPreferences } from '@/components/map/weather/mapWeatherTypes'
@@ -49,9 +47,7 @@ export function PlannerIconSidebar({
   useFlightPlannerMapHotkeys()
 
   const [mapStyleOpen, setMapStyleOpen] = useState(false)
-  const [routeOpen, setRouteOpen] = useState(false)
   const mapStyleRef = useRef<HTMLDivElement>(null)
-  const routeRef = useRef<HTMLDivElement>(null)
 
   const mode = useFlightStore((s) => s.plannerInteractionMode)
   const setMode = useFlightStore((s) => s.setPlannerInteractionMode)
@@ -98,14 +94,10 @@ export function PlannerIconSidebar({
       if (mapStyleRef.current && !mapStyleRef.current.contains(e.target as Node)) {
         setMapStyleOpen(false)
       }
-      if (routeRef.current && !routeRef.current.contains(e.target as Node)) {
-        setRouteOpen(false)
-      }
     }
     const keyHandler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setMapStyleOpen(false)
-        setRouteOpen(false)
       }
     }
     document.addEventListener('mousedown', handler)
@@ -124,7 +116,10 @@ export function PlannerIconSidebar({
       </div>
 
       {/* Main sidebar strip */}
-      <div className="flex flex-col gap-1.5">
+      <div
+        className="flex flex-col gap-1.5 overflow-y-auto"
+        style={{ maxHeight: "calc(100dvh - var(--topbar-height, 3.5rem) - 6rem)" }}
+      >
 
         {/* Mode: Navigate / Draw */}
         <SidebarGroup>
@@ -152,10 +147,7 @@ export function PlannerIconSidebar({
               icon={MapIcon}
               label="Estilo do mapa"
               active={mapStyleOpen}
-              onClick={() => {
-                setMapStyleOpen((o) => !o)
-                setRouteOpen(false)
-              }}
+              onClick={() => setMapStyleOpen((o) => !o)}
             />
             <AnimatePresence>
               {mapStyleOpen && (
@@ -313,31 +305,6 @@ export function PlannerIconSidebar({
                     />
                   </>
                 ) : null}
-                <div className="mx-2 h-px bg-white/[0.07]" />
-                <div ref={routeRef} className="relative">
-                  <SidebarButton
-                    icon={Compass}
-                    label="Grade de rota"
-                    active={routeOpen}
-                    onClick={() => {
-                      setRouteOpen((o) => !o)
-                      setMapStyleOpen(false)
-                    }}
-                  />
-                  <AnimatePresence>
-                    {routeOpen && (
-                      <motion.div
-                        initial={{ opacity: 0, x: -6 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -6 }}
-                        transition={{ duration: 0.15, ease: 'easeOut' }}
-                        className="absolute left-full top-0 z-50 ml-2 w-64 rounded-2xl border border-white/10 bg-[#0f0f0f]/95 p-3.5 shadow-2xl backdrop-blur-xl"
-                      >
-                        <FlightPlannerRouteControls />
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
               </SidebarGroup>
             </motion.div>
           )}
@@ -379,10 +346,6 @@ export function PlannerIconSidebar({
           )}
         </AnimatePresence>
 
-        {/* Keyboard shortcut hint at bottom */}
-        <p className="mt-1 max-w-[3rem] text-center text-[9px] leading-tight text-neutral-600">
-          [ / ] rot.
-        </p>
       </div>
     </div>
   )

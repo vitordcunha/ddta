@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useMapEngine } from '@/features/map-engine/useMapEngine'
 import { useFlightCalculator } from '@/features/flight-planner/hooks/useFlightCalculator'
+import { useDroneModelsQuery } from '@/features/flight-planner/hooks/useDroneModelsQuery'
 import { createMapboxElevationService } from '@/features/flight-planner/services/elevationService'
 import { useFlightStore } from '@/features/flight-planner/stores/useFlightStore'
 import { applyPoiAttitudeToWaypoints } from '@/features/flight-planner/utils/poiCalculator'
@@ -21,12 +22,13 @@ export function FlightPlannerCalculationBridge() {
   const setTerrainLoading = useFlightStore((s) => s.setTerrainLoading)
 
   const { mapboxToken } = useMapEngine()
+  const { data: droneCatalog } = useDroneModelsQuery()
   const elevation = useMemo(
     () => createMapboxElevationService(mapboxToken),
     [mapboxToken],
   )
 
-  const base = useFlightCalculator(polygon, params, routeStartRef)
+  const base = useFlightCalculator(polygon, params, routeStartRef, droneCatalog)
   const localSerial = useRef(0)
 
   useEffect(() => {

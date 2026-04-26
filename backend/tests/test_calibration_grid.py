@@ -1,3 +1,5 @@
+import pytest
+
 from app.services.calibration.calibration_grid import (
     assign_image_to_slot,
     compute_theoretical_grid,
@@ -23,6 +25,24 @@ def _square_poly(cx: float, cy: float, half_deg: float = 0.0004) -> dict:
             ],
         },
     }
+
+
+def test_compute_theoretical_grid_uses_explicit_sensor_from_snapshot():
+    poly = _square_poly(-46.6, -23.5)
+    params = {
+        "droneModel": "Mini 4 Pro",
+        "sensorWidthMm": 20.0,
+        "sensorHeightMm": 15.0,
+        "focalLengthMm": 10.0,
+        "altitudeM": 100,
+        "forwardOverlap": 0.75,
+        "sideOverlap": 0.65,
+        "rotationDeg": 0,
+    }
+    grid = compute_theoretical_grid(poly, params)
+    assert grid.get("error") is None
+    assert grid["footprint_w_m"] == pytest.approx(200.0, rel=1e-3)
+    assert grid["footprint_h_m"] == pytest.approx(150.0, rel=1e-3)
 
 
 def test_compute_theoretical_grid_returns_slots():

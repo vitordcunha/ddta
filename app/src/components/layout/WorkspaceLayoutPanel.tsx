@@ -14,6 +14,8 @@ type WorkspaceLayoutPanelProps = {
   children: ReactNode;
   /** Barra recolhida (mobile) */
   collapsedLabel: string;
+  /** Callback fired whenever the panel opens or closes (desktop only) */
+  onOpenChange?: (open: boolean) => void;
 };
 
 /**
@@ -23,10 +25,17 @@ type WorkspaceLayoutPanelProps = {
 export function WorkspaceLayoutPanel({
   children,
   collapsedLabel,
+  onOpenChange,
 }: WorkspaceLayoutPanelProps) {
   const isDesktop = useMediaQuery(DESKTOP);
   const [open, setOpen] = useState(true);
-  const onToggle = useCallback(() => setOpen((o) => !o), []);
+  const onToggle = useCallback(() => {
+    setOpen((o) => {
+      const next = !o;
+      onOpenChange?.(next);
+      return next;
+    });
+  }, [onOpenChange]);
 
   if (isDesktop) {
     return (

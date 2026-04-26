@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { FloatingPanel } from "@/components/ui/FloatingPanel";
 import { WorkspaceMapView } from "@/components/map/WorkspaceMapView";
@@ -18,6 +18,7 @@ import { ResultsMapToolsOverlay } from "@/features/results/components/ResultsMap
 import { ResultsWorkspacePanel } from "@/features/results/components/ResultsWorkspacePanel";
 import { useResultsViewStore } from "@/features/results/stores/useResultsViewStore";
 import { UploadWorkspacePanel } from "@/features/upload/components/UploadWorkspacePanel";
+import { WindIndicatorOverlay } from "@/features/flight-planner/components/WindIndicatorOverlay";
 import { type WorkspacePanelId, parseWorkspacePanel } from "@/constants/routes";
 import { cn } from "@/lib/utils";
 
@@ -185,6 +186,10 @@ export function WorkspacePage() {
   const showResultsChrome = panel === "results" && Boolean(projectId);
   const mapWeather = useWorkspaceMapWeather();
 
+  // CSS custom property: width of the right panel so overlays can avoid it.
+  const [rightPanelOpen, setRightPanelOpen] = useState(true);
+  const rightPanelWidth = rightPanelOpen ? "var(--layout-panel-width, 32rem)" : "0px";
+
   const mainPanel = renderWorkspacePanel(panel, {
     projectId,
     project,
@@ -193,7 +198,14 @@ export function WorkspacePage() {
   });
 
   return (
-    <div className="fixed inset-0 z-0 overflow-hidden bg-[#0f0f0f] text-[#fafafa]">
+    <div
+      className="fixed inset-0 z-0 overflow-hidden bg-[#0f0f0f] text-[#fafafa]"
+      style={{
+        "--right-panel-width": rightPanelWidth,
+        "--left-sidebar-width": "3rem",
+        "--topbar-height": "3.5rem",
+      } as React.CSSProperties}
+    >
       <div className="absolute inset-0 z-0">
         {showPlanChrome ? <FlightPlannerCalculationBridge /> : null}
         <WorkspaceMapView
@@ -246,6 +258,19 @@ export function WorkspacePage() {
         </div>
       ) : null}
 
+      {/* WindIndicator lives here so it respects --right-panel-width */}
+      {showPlanChrome ? (
+        <div
+          className="pointer-events-none absolute z-[44]"
+          style={{
+            right: "calc(var(--right-panel-width) + 0.75rem)",
+            bottom: "max(6rem, calc(0.75rem + var(--safe-area-bottom, 0px)))",
+          }}
+        >
+          <WindIndicatorOverlay />
+        </div>
+      ) : null}
+
       {!showPlanChrome ? (
         <div className="pointer-events-none absolute inset-0 z-[36]">
           <div
@@ -287,7 +312,10 @@ export function WorkspacePage() {
             "landscape:min-h-0",
           )}
         >
-          <WorkspaceLayoutPanel collapsedLabel={collapsedLabel}>
+          <WorkspaceLayoutPanel
+            collapsedLabel={collapsedLabel}
+            onOpenChange={setRightPanelOpen}
+          >
             {mainPanel}
           </WorkspaceLayoutPanel>
         </div>

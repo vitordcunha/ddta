@@ -8,19 +8,20 @@ interface DroneIllustrationProps {
 }
 
 export function DroneIllustration({ model, className, size = 120 }: DroneIllustrationProps) {
-  switch (model) {
-    case 'Mini 4 Pro':
-    case 'Mini 5 Pro':
-      return <MiniDrone className={className} size={size} />
-    case 'Air 3':
-      return <Air3Drone className={className} size={size} />
-    case 'Mavic 3':
-      return <Mavic3Drone className={className} size={size} />
-    case 'Phantom 4':
-      return <Phantom4Drone className={className} size={size} />
-    default:
-      return <MiniDrone className={className} size={size} />
+  const m = model.toLowerCase()
+  if (m.includes('phantom')) {
+    return <Phantom4Drone className={className} size={size} />
   }
+  if (m.includes('m300') || m.includes('m350') || m.includes('mavic')) {
+    return <Mavic3Drone className={className} size={size} />
+  }
+  if (m.includes('mini')) {
+    return <MiniDrone className={className} size={size} />
+  }
+  if (m.includes('air')) {
+    return <Air3Drone className={className} size={size} />
+  }
+  return <MiniDrone className={className} size={size} />
 }
 
 function MiniDrone({ className, size }: { className?: string; size: number }) {

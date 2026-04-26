@@ -42,7 +42,14 @@ import {
 import { Badge, Button, Card } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { DroneIllustration } from "@/features/flight-planner/components/DroneIllustration";
+import { DroneModelSection } from "@/features/flight-planner/components/DroneModelSection";
+import { useDroneModelsQuery } from "@/features/flight-planner/hooks/useDroneModelsQuery";
 import { getDroneSpec } from "@/features/flight-planner/utils/droneSpecs";
+import {
+  profileToCalibrationSnapshotFields,
+  profileToDroneSpec,
+  resolveFlightDroneProfile,
+} from "@/features/flight-planner/utils/flightDroneProfile";
 import { CalibrationUploadDialog } from "@/features/flight-planner/components/CalibrationUploadDialog";
 import { PreFlightChecklistModal } from "@/features/flight-planner/components/PreFlightChecklistModal";
 import { useKmzExport } from "@/features/flight-planner/hooks/useKmzExport";
@@ -51,7 +58,6 @@ import { KmzTransferNative } from "@/features/flight-planner/components/KmzTrans
 import { generateKmz } from "@/features/flight-planner/utils/kmzBuilder";
 import { buildCalibrationMission } from "@/features/flight-planner/utils/calibrationPlan";
 import { useWeather } from "@/features/flight-planner/hooks/useWeather";
-import { getDroneOptions } from "@/features/flight-planner/utils/droneSpecs";
 import {
   buildSolarFlightContextLines,
   computeSolarFlightWindowSectionRisk,
@@ -211,7 +217,20 @@ export function FlightPlannerConfigPanel({
     phase: geoPhase,
     error: geoError,
   } = useGeolocation();
-  const weatherQuery = useWeather(params.droneModel, params.altitudeM);
+  const {
+    data: droneCatalog,
+    isLoading: droneModelsLoading,
+    isError: droneModelsError,
+  } = useDroneModelsQuery();
+  const resolvedDroneProfile = useMemo(
+    () => resolveFlightDroneProfile(params, droneCatalog),
+    [params.droneModel, params.droneModelId, droneCatalog],
+  );
+  const weatherSpec = useMemo(
+    () => ({ maxSpeedMs: resolvedDroneProfile.maxSpeedMs }),
+    [resolvedDroneProfile.maxSpeedMs],
+  );
+  const weatherQuery = useWeather(weatherSpec, params.altitudeM);
   const kmzExport = useKmzExport(projectName);
   const kmzCalibExport = useKmzExport(projectName);
   const platform = usePlatform();
@@ -396,6 +415,29 @@ export function FlightPlannerConfigPanel({
     setWeather(currentWeather, currentAssessment);
   }, [currentAssessment, currentWeather, setWeather]);
 
+  useEffect(() => {
+    if (!droneCatalog?.length || !params.droneModelId) return;
+    const ok = droneCatalog.some((m) => m.id === params.droneModelId);
+    if (!ok) {
+      setParams({ droneModelId: null });
+    }
+  }, [droneCatalog, params.droneModelId, setParams]);
+
+  useEffect(() => {
+    if (!droneCatalog?.length || params.droneModelId) return;
+    const named = droneCatalog.find((m) => m.name === params.droneModel);
+    const fallback = droneCatalog.find((m) => m.is_default) ?? droneCatalog[0];
+    const pick = named ?? fallback;
+    if (pick) {
+      setParams({ droneModelId: pick.id, droneModel: pick.name });
+    }
+  }, [droneCatalog, params.droneModelId, params.droneModel, setParams]);
+
+  const calibrationOpticsSnapshot = useMemo(
+    () => profileToCalibrationSnapshotFields(resolveFlightDroneProfile(params, droneCatalog)),
+    [params.droneModel, params.droneModelId, droneCatalog],
+  );
+
   const hasPlan = Boolean(polygon && waypoints.length > 0 && stats);
 
   const activeQualityPreset = useMemo(
@@ -410,8 +452,9 @@ export function FlightPlannerConfigPanel({
         stats
           ? { gsdCm: stats.gsdCm, estimatedPhotos: stats.estimatedPhotos }
           : null,
+        droneCatalog,
       ),
-    [params, stats],
+    [params, stats, droneCatalog],
   );
 
   const applyQualityPreset = (id: FlightQualityPresetId) => {
@@ -454,14 +497,18 @@ export function FlightPlannerConfigPanel({
     }
   };
 
-  const droneSpec = getDroneSpec(params.droneModel);
+  const droneSpec = useMemo(() => {
+    const base = profileToDroneSpec(resolvedDroneProfile);
+    const leg = getDroneSpec(params.droneModel);
+    return { ...base, ...(leg.image ? { image: leg.image } : {}) };
+  }, [resolvedDroneProfile, params.droneModel]);
 
   return (
     <div className="space-y-3">
       {/* Drone card */}
       <AnimatePresence mode="wait">
         <motion.div
-          key={params.droneModel}
+          key={params.droneModelId ?? params.droneModel}
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -6 }}
@@ -611,7 +658,7 @@ export function FlightPlannerConfigPanel({
             <p>
               GSD estimado com este drone e altitude:{" "}
               <span className="font-mono text-neutral-200">
-                ~{format.number(estimateGsdCmFromParams(params), 2)} cm/px
+                ~{format.number(estimateGsdCmFromParams(params, droneCatalog), 2)} cm/px
               </span>
               {stats ? (
                 <>
@@ -690,28 +737,13 @@ export function FlightPlannerConfigPanel({
           </ul>
         ) : null}
 
-        <label className="grid gap-1 text-xs text-neutral-400">
-          Drone
-          <select
-            className="input-base"
-            value={params.droneModel}
-            onChange={(event) =>
-              setParams({
-                droneModel: event.target.value as typeof params.droneModel,
-              })
-            }
-          >
-            {getDroneOptions().map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <p className="text-[11px] leading-snug text-neutral-500">
-          Escolha o mesmo modelo que vai voar: o GSD e as estatisticas usam a
-          largura focal e resolucao da camera cadastradas.
-        </p>
+        <DroneModelSection
+          params={params}
+          setParams={setParams}
+          models={droneCatalog}
+          isLoading={droneModelsLoading}
+          isError={droneModelsError}
+        />
         <Range
           label="Altitude"
           value={params.altitudeM}
@@ -874,7 +906,7 @@ export function FlightPlannerConfigPanel({
               disabled={geoPhase === "loading"}
               title="Calcula o angulo otimo e define o ponto de inicio mais proximo da sua posicao"
               onClick={() => {
-                const spec = getDroneSpec(params.droneModel);
+                const spec = profileToDroneSpec(resolvedDroneProfile);
                 const gsdM = calculateGsd(params.altitudeM, spec);
                 const footprint = calculateFootprint(gsdM, spec);
                 const spacings = calculateSpacings(
@@ -1678,6 +1710,7 @@ export function FlightPlannerConfigPanel({
               {
                 params_snapshot: {
                   ...params,
+                  ...calibrationOpticsSnapshot,
                   _calibration: {
                     gsdCm: calibrationMission.stats.gsdCm,
                     estimatedPhotos: calibrationMission.stats.estimatedPhotos,

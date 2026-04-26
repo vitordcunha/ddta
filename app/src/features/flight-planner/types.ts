@@ -1,11 +1,7 @@
 import type { Feature, Polygon } from "geojson";
 
-export type DroneModel =
-  | "Mini 4 Pro"
-  | "Mini 5 Pro"
-  | "Air 3"
-  | "Mavic 3"
-  | "Phantom 4";
+/** Nome do modelo (catálogo API ou legado). */
+export type DroneModel = string;
 
 export type DroneSpec = {
   model: DroneModel;
@@ -25,6 +21,8 @@ export type SelectOption = {
 };
 
 export type FlightParams = {
+  /** UUID do modelo na API; null até sincronizar com o catálogo ou planos antigos. */
+  droneModelId: string | null;
   droneModel: DroneModel;
   altitudeM: number;
   forwardOverlap: number;

@@ -3,7 +3,6 @@ import { MapContainer, useMap } from 'react-leaflet'
 import { MapBottomLeftControls } from '@/components/map/MapBottomLeftControls'
 import { PlannerMapBaseLayer } from '@/components/map/PlannerMapBaseLayer'
 import { FlightPlannerMapContent } from '@/features/flight-planner/components/FlightPlannerMapContent'
-import { WindIndicatorOverlay } from '@/features/flight-planner/components/WindIndicatorOverlay'
 import { ResultsMapInnerLayers } from '@/features/results/components/ResultsMapLayers'
 import type { WorkspacePanelId } from '@/constants/routes'
 import { MapBootstrapView } from '@/components/map/MapBootstrapView'
@@ -93,7 +92,7 @@ export function LeafletMapView({ panel, projectId, weatherTiles }: LeafletMapVie
             <PlannerMapBaseLayer />
             {weatherTileLayers}
             {showPlan ? <FlightPlannerMapContent /> : null}
-            {showPlan ? <WindIndicatorOverlay /> : null}
+            {/* WindIndicatorOverlay moved to WorkspacePage to respect --right-panel-width */}
             {bottomLeftControls}
           </>
         )}

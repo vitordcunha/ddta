@@ -1,5 +1,4 @@
-import { getDroneSpec } from '@/features/flight-planner/utils/droneSpecs'
-import type { DroneModel, FlightAssessment, WeatherData } from '@/features/flight-planner/types'
+import type { DroneSpec, FlightAssessment, WeatherData } from '@/features/flight-planner/types'
 
 /** Mensagem quando Open-Meteo ou a rede falham (planeamento offline continua válido). */
 export const WEATHER_UNAVAILABLE_HEADLINE = 'Clima indisponível'
@@ -84,8 +83,11 @@ export function windSpeedToBeaufort(ms: number): number {
   return 9
 }
 
-export function assessFlightConditions(weather: WeatherData, droneModel: DroneModel, altitudeM: number): FlightAssessment {
-  const spec = getDroneSpec(droneModel)
+export function assessFlightConditions(
+  weather: WeatherData,
+  spec: Pick<DroneSpec, 'maxSpeedMs'>,
+  altitudeM: number,
+): FlightAssessment {
   const issues: string[] = []
   const warnings: string[] = []
   const tips: string[] = []

@@ -8,6 +8,7 @@ import { toWorkspace } from '@/constants/routes'
 import type { WorkspaceMapWeatherTilesProps } from '@/components/map/useWorkspaceMapWeather'
 import { useMapEngine } from '@/features/map-engine/useMapEngine'
 import { useFlightStore } from '@/features/flight-planner/stores/useFlightStore'
+import { useResultsViewStore } from '@/features/results/stores/useResultsViewStore'
 import { useMapBootstrapFocus } from '@/hooks/useMapBootstrapFocus'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import { MapboxBottomLeft } from '@/features/map-engine/providers/mapbox/MapboxBottomLeft'
@@ -19,7 +20,6 @@ import { MapboxWeatherOverlays } from '@/features/map-engine/providers/mapbox/Ma
 import { useMapboxSync } from '@/features/map-engine/providers/mapbox/useMapboxSync'
 import type { MapLayerMouseEvent } from 'mapbox-gl'
 import { newPointOfInterest } from '@/features/flight-planner/types/poi'
-import { WindIndicatorOverlay } from '@/features/flight-planner/components/WindIndicatorOverlay'
 
 const MAP_STYLE = 'mapbox://styles/mapbox/satellite-streets-v12'
 
@@ -38,6 +38,8 @@ export function MapboxMapView({ panel, projectId, weatherTiles }: MapboxMapViewP
   const deckVis = useFlightStore((s) =>
     panel === 'results' ? s.deckMapVisibility.results : s.deckMapVisibility.plan,
   )
+  const showRealFlightPath = useResultsViewStore((s) => s.showRealFlightPath)
+  const selectedWaypointId = useFlightStore((s) => s.selectedWaypointId)
   const poiPlacementActive = useFlightStore((s) => s.poiPlacementActive)
   const bootstrapFocus = useMapBootstrapFocus({ locate })
   const mapRef = useRef<MapRef>(null)
@@ -140,11 +142,17 @@ export function MapboxMapView({ panel, projectId, weatherTiles }: MapboxMapViewP
         <MapboxDeckRouteOverlay
           map={mapInstance}
           panel={panel}
-          enabled={mode === '3d' && showPlanOrResults}
+          projectId={projectId}
+          enabled={
+            showPlanOrResults &&
+            (mode === '3d' ||
+              selectedWaypointId != null ||
+              (showResults && showRealFlightPath))
+          }
         />
         <MapboxControls />
         <MapboxBottomLeft showResults={showResults} />
-        {showPlan ? <WindIndicatorOverlay /> : null}
+        {/* WindIndicatorOverlay moved to WorkspacePage to respect --right-panel-width */}
       </Map>
     </div>
   )

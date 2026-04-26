@@ -15,13 +15,20 @@ function fillColorFor(index: number, total: number): [number, number, number, nu
   return [250, 250, 250, 255]
 }
 
-export function createWaypointLayer(waypointsSorted: Waypoint[]): ScatterplotLayer {
+export function createWaypointLayer(
+  waypointsSorted: Waypoint[],
+  selectedWaypointId?: string | null,
+): ScatterplotLayer {
   const total = waypointsSorted.length
   const data: WaypointDatum[] = waypointsSorted.map((w, i) => ({
     id: w.id,
     position: [w.lng, w.lat, waypointDisplayAltitudeMeters(w)],
     fillColor: fillColorFor(i, total),
   }))
+
+  // Lightweight position hash: avoids full GPU buffer re-upload when only
+  // the selection changes (and vice-versa for colors).
+  const posHash = `${total},${waypointsSorted[0]?.lat ?? 0},${waypointsSorted[total - 1]?.lat ?? 0}`
 
   return new ScatterplotLayer({
     id: 'waypoints',
@@ -31,5 +38,9 @@ export function createWaypointLayer(waypointsSorted: Waypoint[]): ScatterplotLay
     getRadius: 4,
     radiusUnits: 'pixels',
     pickable: true,
+    updateTriggers: {
+      getPosition: posHash,
+      getFillColor: [posHash, selectedWaypointId ?? ''],
+    },
   })
 }

@@ -7,6 +7,7 @@ export function createDroneRouteLayer(waypointsSorted: Waypoint[]): PathLayer {
     (w) =>
       [w.lng, w.lat, waypointDisplayAltitudeMeters(w)] as [number, number, number],
   )
+  const pathHash = `${waypointsSorted.length},${waypointsSorted[0]?.lat ?? 0},${waypointsSorted[waypointsSorted.length - 1]?.lat ?? 0}`
   return new PathLayer({
     id: 'drone-route',
     data: [{ path }],
@@ -16,5 +17,8 @@ export function createDroneRouteLayer(waypointsSorted: Waypoint[]): PathLayer {
     widthUnits: 'pixels',
     capRounded: true,
     jointRounded: true,
+    updateTriggers: {
+      getPath: pathHash,
+    },
   })
 }

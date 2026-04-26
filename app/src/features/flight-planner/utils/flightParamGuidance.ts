@@ -1,5 +1,9 @@
 import type { FlightParams } from '@/features/flight-planner/types'
-import { getDroneSpec } from '@/features/flight-planner/utils/droneSpecs'
+import type { ApiDroneModel } from '@/features/flight-planner/types/droneModelApi'
+import {
+  profileToDroneSpec,
+  resolveFlightDroneProfile,
+} from '@/features/flight-planner/utils/flightDroneProfile'
 import { calculateGsd } from '@/features/flight-planner/utils/waypointCalculator'
 
 export type FlightQualityPresetId = 'draft' | 'balanced' | 'high'
@@ -72,8 +76,12 @@ export function detectActiveQualityPreset(params: FlightParams): FlightQualityPr
   return null
 }
 
-export function estimateGsdCmFromParams(params: FlightParams): number {
-  const gsdM = calculateGsd(params.altitudeM, getDroneSpec(params.droneModel))
+export function estimateGsdCmFromParams(
+  params: FlightParams,
+  catalog?: ApiDroneModel[],
+): number {
+  const spec = profileToDroneSpec(resolveFlightDroneProfile(params, catalog))
+  const gsdM = calculateGsd(params.altitudeM, spec)
   return gsdM * 100
 }
 
@@ -126,10 +134,11 @@ export function safeSpeedMsForBlur(gsdCm: number, altitudeM: number): number {
 export function analyzeFlightConfiguration(
   params: FlightParams,
   stats: { gsdCm: number; estimatedPhotos: number } | null,
+  catalog?: ApiDroneModel[],
 ): FlightConfigNotice[] {
   const notices: FlightConfigNotice[] = []
-  const spec = getDroneSpec(params.droneModel)
-  const gsdCm = stats?.gsdCm ?? estimateGsdCmFromParams(params)
+  const spec = profileToDroneSpec(resolveFlightDroneProfile(params, catalog))
+  const gsdCm = stats?.gsdCm ?? estimateGsdCmFromParams(params, catalog)
   const photos = stats?.estimatedPhotos
 
   if (params.forwardOverlap < 63 || params.sideOverlap < 63) {

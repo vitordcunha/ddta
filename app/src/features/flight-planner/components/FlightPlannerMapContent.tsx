@@ -27,6 +27,12 @@ import {
   closeDraftToPolygon,
   isClickNearFirstVertex,
 } from "@/features/flight-planner/utils/polygonDraft";
+import { useDroneModelsQuery } from "@/features/flight-planner/hooks/useDroneModelsQuery";
+import {
+  profileToCameraParams,
+  resolveFlightDroneProfile,
+} from "@/features/flight-planner/utils/flightDroneProfile";
+import { computeFrustumGeometry } from "@/features/flight-planner/utils/frustumCalculator";
 
 function formatWpLine(w: Waypoint) {
   return `${w.lat.toFixed(6)}, ${w.lng.toFixed(6)} | ${w.altitude}m`;
@@ -330,6 +336,7 @@ function MapFitCalibrationPreview({
 export function FlightPlannerMapContent() {
   const polygon = useFlightStore((s) => s.polygon);
   const poi = useFlightStore((s) => s.poi);
+  const selectedWaypointId = useFlightStore((s) => s.selectedWaypointId);
   const waypoints = useFlightStore((s) => s.waypoints);
   const strips = useFlightStore((s) => s.strips);
   const draftPoints = useFlightStore((s) => s.draftPoints);
@@ -337,6 +344,11 @@ export function FlightPlannerMapContent() {
   const routeStartRef = useFlightStore((s) => s.routeStartRef);
   const calibrationMapPreviewActive = useFlightStore(
     (s) => s.calibrationMapPreviewActive,
+  );
+  const { data: droneCatalog } = useDroneModelsQuery();
+  const droneCameraParams = useMemo(
+    () => profileToCameraParams(resolveFlightDroneProfile(params, droneCatalog)),
+    [params.droneModel, params.droneModelId, droneCatalog],
   );
 
   const calibrationMission = useMemo(() => {
@@ -393,6 +405,15 @@ export function FlightPlannerMapContent() {
 
   /** Missão completa recuada visualmente enquanto a pré-visualização de calibração está ativa. */
   const muteFullMission = calibrationMapPreviewActive;
+
+  const waypointFovFootprintLatLng = useMemo((): [number, number][] | null => {
+    if (!selectedWaypointId) return null;
+    const w = waypoints.find((x) => x.id === selectedWaypointId);
+    if (!w) return null;
+    const g = computeFrustumGeometry(w, droneCameraParams);
+    if (!g || g.footprintPolygon.length < 4) return null;
+    return g.footprintPolygon.map(([lng, lat]) => [lat, lng] as [number, number]);
+  }, [selectedWaypointId, waypoints, droneCameraParams]);
 
   return (
     <>
@@ -486,6 +507,18 @@ export function FlightPlannerMapContent() {
                   lineJoin: "round",
                 }
           }
+        />
+      ) : null}
+      {waypointFovFootprintLatLng && waypointFovFootprintLatLng.length >= 3 ? (
+        <Polygon
+          positions={waypointFovFootprintLatLng}
+          pathOptions={{
+            color: "#f59e0b",
+            weight: 2,
+            fillColor: "#fbbf24",
+            fillOpacity: 0.3,
+            interactive: false,
+          }}
         />
       ) : null}
       <PlanMissionWaypointMarkers

@@ -1,6 +1,8 @@
 import json
+from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
+from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
@@ -8,7 +10,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from geoalchemy2.shape import from_shape
 from PIL import Image
 from shapely.geometry import shape
-from sqlalchemy import delete, func, select
+from sqlalchemy import asc, delete, func, nulls_last, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -33,6 +35,7 @@ from app.db.models.project import Project
 from app.db.models.project_image import ProjectImage
 from app.db.repositories.project_repository import ProjectRepository
 from app.dependencies import get_db
+from app.services.exif.xmp_parser import DjiXmpParser
 from app.schemas.project import (
     ProjectCreate,
     ProjectFlightPlanSave,
@@ -44,6 +47,7 @@ from app.schemas.project import (
 )
 router = APIRouter(prefix="/projects", tags=["projects"])
 project_repository = ProjectRepository()
+_dji_xmp_parser = DjiXmpParser()
 
 
 def _to_float(value) -> float:
@@ -62,6 +66,43 @@ def _gps_to_decimal(values, ref: str) -> float:
     if ref in {"S", "W"}:
         decimal *= -1
     return decimal
+
+
+def _parse_exif_datetime_str(value: str | bytes | None) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", errors="replace")
+    s = str(value).strip()
+    if not s:
+        return None
+    for fmt in ("%Y:%m:%d %H:%M:%S", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(s, fmt).replace(tzinfo=UTC)
+        except ValueError:
+            continue
+    return None
+
+
+def _extract_exif_capture_time(file_bytes: bytes) -> datetime | None:
+    try:
+        image = Image.open(BytesIO(file_bytes))
+        exif = image.getexif()
+        if not exif:
+            return None
+        dt_main = exif.get(306)
+        if dt_main is not None:
+            parsed = _parse_exif_datetime_str(dt_main)
+            if parsed:
+                return parsed
+        try:
+            ifd = exif.get_ifd(0x8769)
+        except Exception:
+            return None
+        dt = ifd.get(0x9003) or ifd.get(0x9004)
+        return _parse_exif_datetime_str(dt)
+    except Exception:
+        return None
 
 
 def _extract_exif_gps(file_bytes: bytes) -> tuple[bool, float | None, float | None]:
@@ -310,6 +351,62 @@ async def save_project_flightplan(
     return await _serialize_project(db, project)
 
 
+@router.get("/{project_id}/flight-path")
+async def get_project_flight_path(project_id: UUID, db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+    """
+    GeoJSON FeatureCollection: LineString [lng, lat, relative_altitude] plus Point per photo.
+    Ordered by EXIF capture time when available. Requires at least 3 geotagged images.
+    """
+    project = await project_repository.get(db, project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    result = await db.execute(
+        select(ProjectImage)
+        .where(
+            ProjectImage.project_id == project_id,
+            ProjectImage.lat.isnot(None),
+            ProjectImage.lon.isnot(None),
+        )
+        .order_by(nulls_last(asc(ProjectImage.captured_at)), asc(ProjectImage.created_at))
+    )
+    images = list(result.scalars().all())
+    if len(images) < 3:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Menos de 3 imagens com GPS; nao e possivel reconstruir o trajeto.",
+        )
+
+    def rel_z(img: ProjectImage) -> float:
+        return float(img.relative_altitude) if img.relative_altitude is not None else 0.0
+
+    line_coords: list[list[float]] = [[img.lon, img.lat, rel_z(img)] for img in images]
+    line_feature: dict[str, Any] = {
+        "type": "Feature",
+        "geometry": {"type": "LineString", "coordinates": line_coords},
+        "properties": {"kind": "reconstructed_route"},
+    }
+    point_features: list[dict[str, Any]] = []
+    for img in images:
+        point_features.append(
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [img.lon, img.lat, rel_z(img)],
+                },
+                "properties": {
+                    "filename": img.filename,
+                    "gimbal_pitch": img.gimbal_pitch,
+                    "flight_yaw": img.flight_yaw,
+                    "captured_at": img.captured_at.isoformat() if img.captured_at else None,
+                },
+            }
+        )
+
+    return {"type": "FeatureCollection", "features": [line_feature, *point_features]}
+
+
 @router.post("/{project_id}/images/upload-chunk")
 async def upload_chunk(
     project_id: UUID,
@@ -361,7 +458,19 @@ async def upload_chunk(
 
     file_bytes = output_path.read_bytes()
     has_gps, lat, lon = _extract_exif_gps(file_bytes)
-    image = ProjectImage(project_id=project_id, filename=final_filename, has_gps=has_gps, lat=lat, lon=lon)
+    xmp = _dji_xmp_parser.parse_bytes(file_bytes)
+    captured_at = _extract_exif_capture_time(file_bytes)
+    image = ProjectImage(
+        project_id=project_id,
+        filename=final_filename,
+        has_gps=has_gps,
+        lat=lat,
+        lon=lon,
+        relative_altitude=xmp.relative_altitude if xmp else None,
+        gimbal_pitch=xmp.gimbal_pitch if xmp else None,
+        flight_yaw=xmp.flight_yaw if xmp else None,
+        captured_at=captured_at,
+    )
     db.add(image)
     await db.commit()
     await db.refresh(image)

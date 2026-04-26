@@ -4,10 +4,10 @@ import {
   WEATHER_UNAVAILABLE_DETAIL,
   WEATHER_UNAVAILABLE_HEADLINE,
 } from '@/features/flight-planner/utils/weatherHelpers'
-import type { DroneModel, FlightAssessment, WeatherData } from '@/features/flight-planner/types'
+import type { DroneSpec, FlightAssessment, WeatherData } from '@/features/flight-planner/types'
 import { weatherService } from '@/services/weatherService'
 
-export function useWeather(droneModel: DroneModel, altitudeM: number) {
+export function useWeather(spec: Pick<DroneSpec, 'maxSpeedMs'>, altitudeM: number) {
   const [weather, setWeather] = useState<WeatherData | null>(null)
   const [assessment, setAssessment] = useState<FlightAssessment | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -19,7 +19,7 @@ export function useWeather(droneModel: DroneModel, altitudeM: number) {
       setError(null)
       const current = await weatherService.getCurrent(lat, lon)
       setWeather(current)
-      setAssessment(assessFlightConditions(current, droneModel, altitudeM))
+      setAssessment(assessFlightConditions(current, spec, altitudeM))
     } catch {
       setWeather(null)
       setAssessment(null)
@@ -27,7 +27,7 @@ export function useWeather(droneModel: DroneModel, altitudeM: number) {
     } finally {
       setIsLoading(false)
     }
-  }, [altitudeM, droneModel])
+  }, [altitudeM, spec.maxSpeedMs])
 
   return { fetchWeather, weather, assessment, isLoading, error }
 }

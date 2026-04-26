@@ -37,6 +37,10 @@ class ProjectImageResponse(BaseModel):
     has_gps: bool
     lat: float | None
     lon: float | None
+    relative_altitude: float | None = None
+    gimbal_pitch: float | None = None
+    flight_yaw: float | None = None
+    captured_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 

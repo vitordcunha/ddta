@@ -2,10 +2,12 @@ import type { DroneModel } from '@/features/flight-planner/types'
 import type { FlightQualityPresetId } from '@/features/flight-planner/utils/flightParamGuidance'
 
 /** Drone com obturador mecânico relevante em muitos modos (referência de campo; DJI muda por firmware). */
-const MECHANICAL_SHUTTER_HINT_MODELS: DroneModel[] = ['Phantom 4', 'Mavic 3']
+const MECHANICAL_SHUTTER_HINT_MODELS: string[] = ['Phantom 4', 'Phantom 4 Pro', 'Mavic 3']
 
-export function droneHasMechanicalShutter(droneModel: DroneModel): boolean {
-  return MECHANICAL_SHUTTER_HINT_MODELS.includes(droneModel)
+export function droneHasMechanicalShutter(droneModel: string): boolean {
+  return MECHANICAL_SHUTTER_HINT_MODELS.some(
+    (m) => m.toLowerCase() === droneModel.trim().toLowerCase(),
+  )
 }
 
 export type CameraModelGuidance = {

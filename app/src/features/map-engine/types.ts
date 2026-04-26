@@ -1,3 +1,6 @@
+import type { DeviceTier } from '@/features/map-engine/utils/detectDeviceTier'
+
+export type { DeviceTier }
 export type MapProvider = 'leaflet' | 'mapbox' | 'google'
 export type MapMode = '2d' | '3d'
 
@@ -7,6 +10,8 @@ export type MapEngineState = {
   /** [lat, lng] */
   center: [number, number]
   zoom: number
+  /** Tier de capacidade WebGL do dispositivo (detectado uma vez no boot). */
+  deviceTier: DeviceTier
 }
 
 /**

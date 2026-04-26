@@ -13,10 +13,13 @@ from shapely.ops import transform as shapely_transform
 # Mirrors frontend `droneSpecs` / presets (sensor mm, focal mm).
 DRONE_SENSOR_DB: dict[str, dict[str, float]] = {
     "Mini 4 Pro": {"sensor_w_mm": 9.6, "sensor_h_mm": 7.2, "focal_length_mm": 6.72},
-    "Mini 5 Pro": {"sensor_w_mm": 12.8, "sensor_h_mm": 9.6, "focal_length_mm": 8.8},
+    "Mini 5 Pro": {"sensor_w_mm": 13.2, "sensor_h_mm": 8.8, "focal_length_mm": 7.33},
     "Air 3": {"sensor_w_mm": 9.6, "sensor_h_mm": 7.2, "focal_length_mm": 6.7},
+    "Air 2S": {"sensor_w_mm": 13.2, "sensor_h_mm": 8.8, "focal_length_mm": 8.38},
     "Mavic 3": {"sensor_w_mm": 17.3, "sensor_h_mm": 13.0, "focal_length_mm": 12.3},
     "Phantom 4": {"sensor_w_mm": 13.2, "sensor_h_mm": 8.8, "focal_length_mm": 8.8},
+    "Phantom 4 Pro": {"sensor_w_mm": 13.2, "sensor_h_mm": 8.8, "focal_length_mm": 8.8},
+    "M300 RTK": {"sensor_w_mm": 13.2, "sensor_h_mm": 8.8, "focal_length_mm": 8.4},
 }
 
 
@@ -52,6 +55,15 @@ def _polygon_from_geojson(data: dict[str, Any]) -> Polygon | None:
 
 
 def _sensor_from_params(params: dict[str, Any]) -> tuple[float, float, float]:
+    """Prioriza snapshot explícito (Fase 9); senão legado por nome de modelo."""
+    sw = params.get("sensorWidthMm")
+    sh = params.get("sensorHeightMm")
+    fl = params.get("focalLengthMm")
+    try:
+        if sw is not None and sh is not None and fl is not None:
+            return float(sw), float(sh), float(fl)
+    except (TypeError, ValueError):
+        pass
     model = str(params.get("droneModel") or "")
     spec = DRONE_SENSOR_DB.get(model)
     if spec:

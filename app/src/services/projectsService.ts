@@ -1,4 +1,4 @@
-import type { Polygon } from "geojson";
+import type { FeatureCollection, Polygon } from "geojson";
 import { http } from "@/services/http";
 import type { PersistedFlightPlan } from "@/features/flight-planner/stores/useFlightStore";
 import type {
@@ -430,6 +430,13 @@ export const projectsService = {
     const { data } = await http.get<GeoJSON.GeoJsonObject>(
       `/projects/${id}/sparse-cloud`,
       { timeout: 120_000 },
+    );
+    return data;
+  },
+
+  async getFlightPathGeoJson(id: string): Promise<FeatureCollection> {
+    const { data } = await http.get<FeatureCollection>(
+      `/projects/${id}/flight-path`,
     );
     return data;
   },

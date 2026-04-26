@@ -373,6 +373,60 @@ def build_exif_report(
             )
         )
 
+    # Distância focal EXIF vs modelo configurado (Fase 9)
+    exp_fl = params_snapshot.get("focalLengthMm")
+    if exp_fl is None:
+        exp_fl = params_snapshot.get("expectedFocalLengthMm")
+    try:
+        exp_fl_f = float(exp_fl) if exp_fl is not None else None
+    except (TypeError, ValueError):
+        exp_fl_f = None
+
+    focals = [float(r["focal_length_mm"]) for r in valid if r.get("focal_length_mm") is not None]
+    med_focal = _median(focals) if focals else None
+
+    if med_focal is not None and exp_fl_f is not None and exp_fl_f > 0:
+        rel_diff = abs(med_focal - exp_fl_f) / exp_fl_f
+        if rel_diff <= 0.12:
+            metrics.append(
+                _metric(
+                    "focal_vs_model",
+                    "Distância focal (EXIF vs modelo)",
+                    "ok",
+                    f"Mediana EXIF ~{med_focal:.2f} mm vs modelo {exp_fl_f:.2f} mm (Δ rel. {rel_diff:.0%}).",
+                    value=rel_diff,
+                )
+            )
+        elif rel_diff <= 0.25:
+            metrics.append(
+                _metric(
+                    "focal_vs_model",
+                    "Distância focal (EXIF vs modelo)",
+                    "warn",
+                    f"Focal mediana ~{med_focal:.2f} mm difere do modelo ({exp_fl_f:.2f} mm) em ~{rel_diff:.0%}; confira modelo ou lente.",
+                    value=rel_diff,
+                )
+            )
+        else:
+            metrics.append(
+                _metric(
+                    "focal_vs_model",
+                    "Distância focal (EXIF vs modelo)",
+                    "bad",
+                    f"Focal EXIF (~{med_focal:.2f} mm) inconsistente com o modelo planejado ({exp_fl_f:.2f} mm).",
+                    value=rel_diff,
+                )
+            )
+    elif exp_fl_f is not None and exp_fl_f > 0 and not focals:
+        metrics.append(
+            _metric(
+                "focal_vs_model",
+                "Distância focal (EXIF vs modelo)",
+                "info",
+                "Modelo define focal, mas as amostras não trazem distância focal no EXIF.",
+            )
+        )
+
     summary = {
         "image_count": n,
         "parsed_count": len(valid),

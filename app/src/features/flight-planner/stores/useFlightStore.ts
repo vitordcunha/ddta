@@ -99,6 +99,7 @@ type FlightStore = PersistedFlightPlan & {
 }
 
 export const initialFlightParams: FlightParams = {
+  droneModelId: null,
   droneModel: 'Mini 4 Pro',
   altitudeM: 120,
   forwardOverlap: 80,
@@ -206,7 +207,11 @@ export const useFlightStore = create<FlightStore>((set) => ({
   loadPlan: (plan) =>
     set({
       polygon: plan.polygon,
-      params: plan.params,
+      params: {
+        ...initialFlightParams,
+        ...plan.params,
+        droneModelId: plan.params.droneModelId ?? null,
+      },
       waypoints: migrateWaypoints(plan.waypoints as unknown[]),
       stats: plan.stats,
       weather: plan.weather,

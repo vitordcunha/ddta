@@ -21,6 +21,7 @@ import type {
   FlightAssessment,
   FlightStats,
 } from '@/features/flight-planner/types'
+import { useDroneModelsQuery } from '@/features/flight-planner/hooks/useDroneModelsQuery'
 import { detectActiveQualityPreset, estimateGsdCmFromParams } from '@/features/flight-planner/utils/flightParamGuidance'
 import { wmoCodeToConditionPt, windDegToCompass } from '@/features/flight-planner/utils/weatherHelpers'
 
@@ -91,6 +92,7 @@ export function PreFlightChecklistModal({
   isCalibrationKmzGenerating,
   calibrationSessionRevision = 0,
 }: PreFlightChecklistModalProps) {
+  const { data: droneCatalog } = useDroneModelsQuery()
   const stepMeta = useMemo(() => {
     if (flow === 'calibration') {
       return {
@@ -120,15 +122,15 @@ export function PreFlightChecklistModal({
   const descId = useId()
 
   const groups = useMemo(
-    () => buildChecklist(params, weather, assessment, now),
-    [params, weather, assessment, now],
+    () => buildChecklist(params, weather, assessment, now, droneCatalog),
+    [params, weather, assessment, now, droneCatalog],
   )
   const preset = useMemo(() => detectActiveQualityPreset(params), [params])
   const cameraG = useMemo(
     () => getCameraModelGuidance(params.droneModel, preset),
     [params.droneModel, preset],
   )
-  const gsdCm = estimateGsdCmFromParams(params)
+  const gsdCm = estimateGsdCmFromParams(params, droneCatalog)
   const shutterHint = useMemo(
     () => computeMinShutterSuggestion({ speedMs: params.speedMs, gsdCm }),
     [params.speedMs, gsdCm],

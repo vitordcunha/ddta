@@ -27,6 +27,29 @@ def test_auto_white_balance_warns():
     assert wb["severity"] == "warn"
 
 
+def test_focal_length_matches_model_ok():
+    rows = [
+        {
+            "exposure_time_s": 0.01,
+            "exposure_time_log2": -6.64,
+            "iso": 100,
+            "iso_log2": 6.64,
+            "focal_length_mm": 12.3,
+        },
+        {
+            "exposure_time_s": 0.01,
+            "exposure_time_log2": -6.64,
+            "iso": 100,
+            "iso_log2": 6.64,
+            "focal_length_mm": 12.35,
+        },
+    ]
+    params = {"speedMs": 8, "altitudeM": 100, "focalLengthMm": 12.29}
+    report = build_exif_report(rows, params)
+    m = next(x for x in report["metrics"] if x["id"] == "focal_vs_model")
+    assert m["severity"] == "ok"
+
+
 def test_exposure_inconsistency_bad():
     rows = []
     for i in range(5):

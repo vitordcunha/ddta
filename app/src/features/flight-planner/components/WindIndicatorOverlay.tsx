@@ -48,13 +48,7 @@ export function WindIndicatorOverlay() {
   const cardinal = windDegToCompass(windDirectionDeg);
 
   return (
-    <div
-      className="pointer-events-none absolute z-[2000]"
-      style={{
-        right: "max(0.75rem, env(safe-area-inset-right, 0px))",
-        bottom: "max(6rem, calc(0.75rem + var(--safe-area-bottom, 0px)))",
-      }}
-    >
+    <div className="pointer-events-none">
       <div
         className="flex flex-col items-center gap-1 rounded-xl px-2 pb-2 pt-1.5 select-none"
         style={{

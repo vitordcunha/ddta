@@ -24,9 +24,9 @@ DRONE_SPECS: dict[str, DroneSpec] = {
         model="Mini 5 Pro",
         sensor_width_mm=13.2,
         sensor_height_mm=8.8,
-        focal_length_mm=6.8,
+        focal_length_mm=7.33,
         image_width_px=8192,
-        image_height_px=5460,
+        image_height_px=6144,
     ),
     "air-3": DroneSpec(
         model="Air 3",

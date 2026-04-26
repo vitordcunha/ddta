@@ -104,6 +104,12 @@ export function ResultsWorkspacePanel({
   useMapAutoBounds(projectId, assetVersion);
   const activeLayer = useResultsViewStore((s) => s.activeLayer);
   const setActiveLayer = useResultsViewStore((s) => s.setActiveLayer);
+  const opacity = useResultsViewStore((s) => s.opacity);
+  const setOpacity = useResultsViewStore((s) => s.setOpacity);
+  const showRealFlightPath = useResultsViewStore((s) => s.showRealFlightPath);
+  const setShowRealFlightPath = useResultsViewStore(
+    (s) => s.setShowRealFlightPath,
+  );
 
   const sparseOnMap =
     sparseCloudAvailable || Boolean(project?.sparseCloudAvailable);
@@ -133,6 +139,8 @@ export function ResultsWorkspacePanel({
           activeLayer={activeLayer}
           onChange={setActiveLayer}
           sparseLayerUnlocked={sparseOnMap}
+          showRealFlightPath={showRealFlightPath}
+          onRealFlightPathChange={setShowRealFlightPath}
         />
         <p className="text-xs text-neutral-500">
           Com MDS, MDT ou curvas, use o controlo vertical no mapa. Em
@@ -142,6 +150,29 @@ export function ResultsWorkspacePanel({
           scope="results"
           hint="No Mapbox 3D, a rota do plano de voo (se carregada) segue a altitude dos waypoints."
         />
+        {activeLayer !== "orthophoto" ? (
+          <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-black/20 px-3 py-2">
+            <label
+              className="shrink-0 text-[11px] font-mono uppercase tracking-[1.2px] text-neutral-500"
+              htmlFor="results-opacity-slider"
+            >
+              Opac.
+            </label>
+            <input
+              id="results-opacity-slider"
+              type="range"
+              min={0}
+              max={100}
+              value={opacity}
+              onChange={(e) => setOpacity(Number(e.target.value))}
+              className="min-w-0 flex-1"
+              aria-label="Opacidade da camada ativa"
+            />
+            <span className="w-8 shrink-0 text-right font-mono text-[11px] text-neutral-400">
+              {opacity}%
+            </span>
+          </div>
+        ) : null}
       </div>
 
       {project ? <ResultRunLayersPanel project={project} /> : null}

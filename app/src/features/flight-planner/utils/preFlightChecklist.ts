@@ -3,6 +3,7 @@ import {
   wmoCodeToConditionPt,
 } from '@/features/flight-planner/utils/weatherHelpers'
 import type { FlightParams, WeatherData, FlightAssessment } from '@/features/flight-planner/types'
+import type { ApiDroneModel } from '@/features/flight-planner/types/droneModelApi'
 import { estimateGsdCmFromParams } from '@/features/flight-planner/utils/flightParamGuidance'
 
 export type ChecklistItemDef = {
@@ -109,8 +110,9 @@ export function buildChecklist(
   weather: WeatherData | null,
   assessment: FlightAssessment | null,
   now: Date,
+  catalog?: ApiDroneModel[],
 ): ChecklistGroup[] {
-  const gsd = estimateGsdCmFromParams(params)
+  const gsd = estimateGsdCmFromParams(params, catalog)
   return [
     {
       id: 'drone',

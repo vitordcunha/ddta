@@ -1,6 +1,5 @@
 import * as turf from '@turf/turf'
 import type { Feature, LineString, Polygon } from 'geojson'
-import { getDroneSpec } from '@/features/flight-planner/utils/droneSpecs'
 import type { DroneSpec, FlightParams, FlightStats, Strip, Waypoint } from '@/features/flight-planner/types'
 
 type Footprint = { widthM: number; heightM: number }
@@ -288,8 +287,8 @@ export function calculateStats(
   polygon: Feature<Polygon>,
   params: FlightParams,
   strips: Strip[],
+  specs: DroneSpec,
 ): FlightStats {
-  const specs = getDroneSpec(params.droneModel)
   const gsdM = calculateGsd(params.altitudeM, specs)
   const footprint = calculateFootprint(gsdM, specs)
   const spacing = calculateSpacings(footprint, params.forwardOverlap, params.sideOverlap)

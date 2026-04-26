@@ -4,8 +4,6 @@ import { useResultsMapMeasurements } from "@/features/results/hooks/useResultsMa
 import { useResultsViewStore } from "@/features/results/stores/useResultsViewStore";
 
 export function ResultsMapToolsOverlay() {
-  const opacity = useResultsViewStore((s) => s.opacity);
-  const setOpacity = useResultsViewStore((s) => s.setOpacity);
   const activeLayer = useResultsViewStore((s) => s.activeLayer);
   const tool = useResultsViewStore((s) => s.tool);
   const setTool = useResultsViewStore((s) => s.setTool);
@@ -13,29 +11,11 @@ export function ResultsMapToolsOverlay() {
   const { distanceResult, areaResult, elevationPoint } =
     useResultsMapMeasurements();
 
-  const showOpacitySlider = activeLayer !== "orthophoto";
-
-  if (!showOpacitySlider) return null;
+  if (activeLayer === "orthophoto") return null;
 
   return (
     <>
-      <div className="pointer-events-auto absolute left-3 bottom-[50%] z-[2000] flex flex-col gap-2">
-        <div className="flex max-w-[4.25rem] flex-col items-center gap-1 rounded-xl border border-[#2e2e2e] bg-[#171717]/90 p-2 backdrop-blur-md">
-          <span className="text-[10px] font-mono uppercase tracking-[1.2px] text-neutral-500">
-            Opac
-          </span>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={opacity}
-            onChange={(e) => setOpacity(Number(e.target.value))}
-            className="h-28 [writing-mode:vertical-lr]"
-            aria-label="Opacidade da camada ativa"
-          />
-        </div>
-      </div>
-
+      {/* Measurement tools — bottom-left */}
       <div className="pointer-events-auto absolute bottom-3 left-3 z-[2000] flex flex-wrap gap-2 rounded-xl border border-[#2e2e2e] bg-[#171717]/90 p-2 backdrop-blur-md">
         <Button
           size="sm"
@@ -66,8 +46,12 @@ export function ResultsMapToolsOverlay() {
         </Button>
       </div>
 
+      {/* Measurement results — bottom-right, respects right panel */}
       {(distanceResult || areaResult || elevationPoint) && (
-        <div className="pointer-events-auto absolute bottom-3 right-3 z-[2000] max-w-xs rounded-xl border border-[#2e2e2e] bg-[#171717]/90 p-3 text-xs text-neutral-200 backdrop-blur-md">
+        <div
+          className="pointer-events-auto absolute bottom-3 z-[2000] max-w-xs rounded-xl border border-[#2e2e2e] bg-[#171717]/90 p-3 text-xs text-neutral-200 backdrop-blur-md"
+          style={{ right: "calc(var(--right-panel-width, 0px) + 0.75rem)" }}
+        >
           {distanceResult ? <p>Distancia: {distanceResult}</p> : null}
           {areaResult ? <p>Area: {areaResult}</p> : null}
           {elevationPoint ? <p>Cota: 1.024,3 m (datum WGS84)</p> : null}

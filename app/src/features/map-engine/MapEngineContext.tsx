@@ -8,6 +8,7 @@ import {
 } from 'react'
 import { fetchMapApiKeys } from '@/services/mapApiKeysService'
 import type { MapEngineState, MapMode, MapProvider } from '@/features/map-engine/types'
+import { detectDeviceTier, type DeviceTier } from '@/features/map-engine/utils/detectDeviceTier'
 
 const LS_PREFS = 'map-engine:preferences'
 
@@ -50,6 +51,7 @@ function writePrefs(p: Pick<MapEngineState, 'provider' | 'mode' | 'center' | 'zo
 export type MapEngineContextValue = MapEngineState & {
   mapboxToken: string
   googleMapsApiKey: string
+  deviceTier: DeviceTier
   setProvider: (provider: MapProvider) => void
   setMode: (mode: MapMode) => void
   setCenterZoom: (center: [number, number], zoom: number) => void
@@ -82,6 +84,8 @@ export function MapEngineProvider({ children }: { children: ReactNode }) {
   )
   const [mapboxToken, setMapboxToken] = useState('')
   const [googleMapsApiKey, setGoogleMapsApiKey] = useState('')
+  // Detectado uma vez no boot; imutável durante a sessão.
+  const [deviceTier] = useState<DeviceTier>(() => detectDeviceTier())
 
   const loadKeys = useCallback(async () => {
     try {
@@ -136,6 +140,7 @@ export function MapEngineProvider({ children }: { children: ReactNode }) {
       zoom,
       mapboxToken,
       googleMapsApiKey,
+      deviceTier,
       setProvider,
       setMode,
       setCenterZoom,
@@ -148,6 +153,7 @@ export function MapEngineProvider({ children }: { children: ReactNode }) {
       zoom,
       mapboxToken,
       googleMapsApiKey,
+      deviceTier,
       setProvider,
       setMode,
       setCenterZoom,

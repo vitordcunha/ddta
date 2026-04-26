@@ -13,6 +13,7 @@ import {
 import { sampleContours } from "@/features/results/mocks/completedProject";
 import type { MapBounds } from "@/features/results/stores/useResultsViewStore";
 import { useResultsViewStore } from "@/features/results/stores/useResultsViewStore";
+import { lineStringCoordinates3d } from "@/features/map-engine/layers/RealFlightPathLayer";
 import { projectHasFullOrthophoto } from "@/features/results/utils/orthophotoAssets";
 import { projectsService } from "@/services/projectsService";
 import "leaflet/dist/leaflet.css";
@@ -110,6 +111,19 @@ export function ResultsMapInnerLayers({
   const addDistancePoint = useResultsViewStore((s) => s.addDistancePoint);
   const addAreaPoint = useResultsViewStore((s) => s.addAreaPoint);
   const setElevationPoint = useResultsViewStore((s) => s.setElevationPoint);
+  const showRealFlightPath = useResultsViewStore((s) => s.showRealFlightPath);
+  const { data: flightPathGeo } = useQuery({
+    queryKey: ["project-flight-path", projectId],
+    queryFn: () => projectsService.getFlightPathGeoJson(projectId!),
+    enabled: Boolean(projectId && showRealFlightPath),
+    retry: false,
+  });
+  const realPathLatLng = useMemo(() => {
+    if (!flightPathGeo) return [] as [number, number][];
+    return lineStringCoordinates3d(flightPathGeo).map(
+      ([lng, lat]) => [lat, lng] as [number, number],
+    );
+  }, [flightPathGeo]);
 
   return (
     <>
@@ -162,6 +176,12 @@ export function ResultsMapInnerLayers({
             const e = feature.properties?.elevation;
             if (e) layer.bindTooltip(`${e} m`);
           }}
+        />
+      ) : null}
+      {showRealFlightPath && realPathLatLng.length >= 2 ? (
+        <Polyline
+          positions={realPathLatLng}
+          pathOptions={{ color: "#06b6d4", weight: 3, opacity: 0.92 }}
         />
       ) : null}
       {activeLayer === "sparse" && sparseGeoJson ? (

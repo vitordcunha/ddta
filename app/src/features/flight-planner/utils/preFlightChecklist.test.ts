@@ -3,6 +3,7 @@ import { buildChecklist } from '@/features/flight-planner/utils/preFlightCheckli
 import type { WeatherData, FlightAssessment } from '@/features/flight-planner/types'
 
 const baseParams = {
+  droneModelId: null as string | null,
   droneModel: 'Mini 4 Pro' as const,
   altitudeM: 100,
   forwardOverlap: 80,

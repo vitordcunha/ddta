@@ -8,6 +8,8 @@ export type MapBounds = [[number, number], [number, number]]
 
 const initial = {
   activeLayer: 'orthophoto' as ResultLayerId,
+  /** Trajeto real a partir de EXIF/XMP (painel Resultados + mapa deck). */
+  showRealFlightPath: false,
   opacity: 85,
   tool: 'none' as ResultsMapToolId,
   distancePoints: [] as [number, number][],
@@ -24,6 +26,7 @@ const initial = {
 
 type ResultsViewState = typeof initial & {
   setActiveLayer: (id: ResultLayerId) => void
+  setShowRealFlightPath: (v: boolean) => void
   setOpacity: (n: number) => void
   setTool: (t: ResultsMapToolId) => void
   addDistancePoint: (p: [number, number]) => void
@@ -41,6 +44,7 @@ type ResultsViewState = typeof initial & {
 export const useResultsViewStore = create<ResultsViewState>((set) => ({
   ...initial,
   setActiveLayer: (activeLayer) => set({ activeLayer }),
+  setShowRealFlightPath: (showRealFlightPath) => set({ showRealFlightPath }),
   setOpacity: (opacity) => set({ opacity }),
   setTool: (tool) => set({ tool }),
   addDistancePoint: (p) =>

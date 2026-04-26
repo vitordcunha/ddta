@@ -1,10 +1,6 @@
-import type {
-  DroneModel,
-  DroneSpec,
-  SelectOption,
-} from "@/features/flight-planner/types";
+import type { DroneSpec, SelectOption } from "@/features/flight-planner/types";
 
-const DRONE_SPECS: Record<DroneModel, DroneSpec> = {
+const DRONE_SPECS: Record<string, DroneSpec> = {
   "Mini 4 Pro": {
     model: "Mini 4 Pro",
     sensorWidthMm: 9.6,
@@ -18,9 +14,9 @@ const DRONE_SPECS: Record<DroneModel, DroneSpec> = {
   "Mini 5 Pro": {
     model: "Mini 5 Pro",
     image: "/mini-5-pro.png",
-    sensorWidthMm: 12.8,
-    sensorHeightMm: 9.6,
-    focalLengthMm: 8.8,
+    sensorWidthMm: 13.2,
+    sensorHeightMm: 8.8,
+    focalLengthMm: 7.33,
     imageWidthPx: 8192,
     imageHeightPx: 6144,
     maxSpeedMs: 18,
@@ -61,10 +57,15 @@ const DRONE_SPECS: Record<DroneModel, DroneSpec> = {
 export function getDroneOptions(): SelectOption[] {
   return Object.keys(DRONE_SPECS).map((model) => ({
     label: model,
-    value: model as DroneModel,
+    value: model,
   }));
 }
 
-export function getDroneSpec(model: DroneModel): DroneSpec {
-  return DRONE_SPECS[model];
+/** Especificações locais quando o catálogo API não está disponível ou não contém o nome. */
+export function getDroneSpec(model: string): DroneSpec {
+  const direct = DRONE_SPECS[model]
+  if (direct) return direct
+  const k = Object.keys(DRONE_SPECS).find((x) => x.toLowerCase() === model.trim().toLowerCase())
+  if (k) return DRONE_SPECS[k]!
+  return DRONE_SPECS['Mini 4 Pro']!
 }

@@ -3,6 +3,7 @@ import * as turf from '@turf/turf'
 import { buildCalibrationMission, buildCalibrationPolygon, buildCalibrationStats } from '@/features/flight-planner/utils/calibrationPlan'
 
 const baseParams = {
+  droneModelId: null as string | null,
   droneModel: 'Mini 4 Pro' as const,
   altitudeM: 100,
   forwardOverlap: 80,

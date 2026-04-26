@@ -106,7 +106,7 @@ function computeRouteForPolygon(
           };
         })();
 
-  const stats = calculateStats(waypoints, calPoly, params, strips);
+  const stats = calculateStats(waypoints, calPoly, params, strips, specs);
   return { strips, waypoints, stats };
 }
 
