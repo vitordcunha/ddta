@@ -1,10 +1,11 @@
-import { Crosshair, Loader2 } from "lucide-react"
+import { Crosshair, Loader2, ScanSearch } from "lucide-react"
 import { useCallback } from "react"
 import { Circle, CircleMarker, useMap } from "react-leaflet"
 import type {
   GeolocationCoords,
   GeolocationHookState,
 } from "@/hooks/useGeolocation"
+import { useResultsViewStore } from "@/features/results/stores/useResultsViewStore"
 import { cn } from "@/lib/utils"
 
 const LOCATE_ZOOM = 16
@@ -63,6 +64,7 @@ export function MapUserLocationToolbar({
   locate,
 }: Omit<MapUserLocationProps, "position">) {
   const map = useMap()
+  const autoFitBounds = useResultsViewStore((s) => s.autoFitBounds)
 
   const onLocate = useCallback(() => {
     void locate().then((coords) => {
@@ -71,6 +73,11 @@ export function MapUserLocationToolbar({
       })
     })
   }, [locate, map])
+
+  const onFitProject = useCallback(() => {
+    if (!autoFitBounds) return
+    map.flyToBounds(autoFitBounds, { padding: [32, 32], maxZoom: 20, duration: 0.75 })
+  }, [autoFitBounds, map])
 
   return (
     <div className="pointer-events-auto flex flex-col items-stretch gap-2">
@@ -86,6 +93,20 @@ export function MapUserLocationToolbar({
         className="flex flex-col overflow-hidden rounded-xl border border-white/15 bg-[#121212]/90 shadow-lg backdrop-blur-md"
         aria-live="polite"
       >
+        {autoFitBounds ? (
+          <>
+            <button
+              type="button"
+              className={cn(BTN)}
+              onClick={onFitProject}
+              title="Ir para area do projeto"
+              aria-label="Centralizar o mapa na area do projeto"
+            >
+              <ScanSearch className="size-5" aria-hidden />
+            </button>
+            <div className="mx-3 h-px bg-white/10" />
+          </>
+        ) : null}
         <button
           type="button"
           className={cn(BTN)}

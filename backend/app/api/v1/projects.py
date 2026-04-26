@@ -1,7 +1,7 @@
 import json
 from io import BytesIO
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse, RedirectResponse
@@ -15,11 +15,20 @@ from app.config import settings
 from app.core.storage.file_manager import (
     assemble_chunks,
     cleanup_temp,
+    clear_project_image_files,
+    clear_project_preview_results_disk,
+    clear_project_preview_runs_disk,
+    clear_project_processing_runs_disk,
+    clear_project_results_disk,
+    clear_project_sparse_cloud_disk,
+    clear_project_temp,
+    delete_calibration_session_storage,
     get_chunk_path,
     get_presigned_url,
     get_project_dir,
     wipe_project_upload_scratch,
 )
+from app.db.models.calibration_session import CalibrationSession
 from app.db.models.project import Project
 from app.db.models.project_image import ProjectImage
 from app.db.repositories.project_repository import ProjectRepository
@@ -29,6 +38,7 @@ from app.schemas.project import (
     ProjectFlightPlanSave,
     ProjectImageResponse,
     ProjectListItem,
+    ProjectPurgeRequest,
     ProjectResponse,
     ProjectUpdate,
 )
@@ -106,6 +116,13 @@ async def _serialize_project(db: AsyncSession, project: Project) -> ProjectRespo
         assets=project.assets,
         processing_task_uuid=project.processing_task_uuid,
         odm_task_uuid=project.odm_task_uuid,
+        preview_status=project.preview_status,
+        preview_progress=project.preview_progress or 0,
+        preview_assets=project.preview_assets,
+        processing_runs=list(project.processing_runs or []),
+        preview_runs=list(project.preview_runs or []),
+        last_processing_preset=project.last_processing_preset,
+        sparse_cloud_path=project.sparse_cloud_path,
         created_at=project.created_at,
         updated_at=project.updated_at,
         images=[ProjectImageResponse.model_validate(image) for image in project.images],
@@ -175,6 +192,96 @@ async def update_project(
     return await _serialize_project(db, project)
 
 
+def _project_purge_blocked(project: Project) -> bool:
+    if project.status in {"processing", "queued"}:
+        return True
+    preview_st = (project.preview_status or "").lower()
+    if preview_st in {"processing", "queued"}:
+        return True
+    return False
+
+
+@router.post("/{project_id}/purge", response_model=ProjectResponse)
+async def purge_project_data(
+    project_id: UUID,
+    body: ProjectPurgeRequest,
+    db: AsyncSession = Depends(get_db),
+) -> ProjectResponse:
+    """
+    Remove selected project data from storage and database.
+    Cannot run while main or preview pipeline is active.
+    """
+    project = await project_repository.get_with_images(db, project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    if _project_purge_blocked(project):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot purge while processing or preview is running",
+        )
+
+    if body.calibration_sessions:
+        session_ids = (
+            await db.execute(select(CalibrationSession.id).where(CalibrationSession.project_id == project_id))
+        ).scalars().all()
+        for sid in session_ids:
+            delete_calibration_session_storage(sid)
+        await db.execute(delete(CalibrationSession).where(CalibrationSession.project_id == project_id))
+
+    if body.images:
+        clear_project_temp(project_id)
+        clear_project_image_files(project_id)
+        await db.execute(delete(ProjectImage).where(ProjectImage.project_id == project_id))
+        project.progress = 0
+        project.processing_task_uuid = None
+        project.odm_task_uuid = None
+        project.status = "draft"
+
+    if body.flight_plan:
+        project.flight_area = None
+        project.planner_data = None
+        project.altitude_m = None
+        project.forward_overlap = None
+        project.side_overlap = None
+        project.rotation_angle = None
+
+    if body.processing_results:
+        clear_project_results_disk(project_id)
+        project.assets = None
+        project.stats = None
+        project.processing_task_uuid = None
+        project.odm_task_uuid = None
+        project.last_processing_preset = None
+        project.sparse_cloud_path = None
+        clear_project_sparse_cloud_disk(project_id)
+        project.status = "draft"
+        project.progress = 0
+
+    if body.preview_results:
+        clear_project_preview_results_disk(project_id)
+        project.preview_assets = None
+        project.preview_status = None
+        project.preview_progress = 0
+        project.preview_task_uuid = None
+        project.preview_odm_task_uuid = None
+        project.sparse_cloud_path = None
+        clear_project_sparse_cloud_disk(project_id)
+
+    if body.processing_runs:
+        clear_project_processing_runs_disk(project_id)
+        project.processing_runs = []
+
+    if body.preview_runs:
+        clear_project_preview_runs_disk(project_id)
+        project.preview_runs = []
+
+    await db.commit()
+    project = await project_repository.get_with_images(db, project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Project reload failed")
+    return await _serialize_project(db, project)
+
+
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_project(project_id: UUID, db: AsyncSession = Depends(get_db)) -> None:
     project = await project_repository.get(db, project_id)
@@ -235,7 +342,13 @@ async def upload_chunk(
 
     temp_dir = get_project_dir(project_id) / "temp" / file_id
     images_dir = get_project_dir(project_id) / "images"
-    output_path = images_dir / filename
+    # Evita colisão: se já existe arquivo com mesmo nome, adiciona sufixo único
+    stem = Path(filename).stem
+    suffix = Path(filename).suffix
+    final_filename = filename
+    if (images_dir / filename).exists():
+        final_filename = f"{stem}_{uuid4().hex[:8]}{suffix}"
+    output_path = images_dir / final_filename
     assemble_chunks(temp_dir, output_path, total_chunks)
     max_upload_bytes = settings.max_upload_file_size_mb * 1024 * 1024
     if output_path.stat().st_size > max_upload_bytes:
@@ -248,7 +361,7 @@ async def upload_chunk(
 
     file_bytes = output_path.read_bytes()
     has_gps, lat, lon = _extract_exif_gps(file_bytes)
-    image = ProjectImage(project_id=project_id, filename=filename, has_gps=has_gps, lat=lat, lon=lon)
+    image = ProjectImage(project_id=project_id, filename=final_filename, has_gps=has_gps, lat=lat, lon=lon)
     db.add(image)
     await db.commit()
     await db.refresh(image)
@@ -257,7 +370,7 @@ async def upload_chunk(
     return ProjectImageResponse.model_validate(image)
 
 
-@router.get("/{project_id}/assets/{asset_key}/download")
+@router.get("/{project_id}/assets/{asset_key:path}/download")
 async def download_project_asset(
     project_id: UUID,
     asset_key: str,
@@ -357,6 +470,121 @@ async def reset_upload_session(
     project.processing_task_uuid = None
     project.odm_task_uuid = None
     project.status = "draft"
+    project.preview_status = None
+    project.preview_progress = 0
+    project.preview_task_uuid = None
+    project.preview_odm_task_uuid = None
+    project.preview_assets = None
+    project.sparse_cloud_path = None
 
     await db.commit()
     return {"deleted_images": deleted}
+
+
+@router.get("/{project_id}/sparse-cloud")
+async def get_sparse_cloud(
+    project_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> FileResponse:
+    """
+    Return the sparse point cloud (GeoJSON) generated by SfM.
+    Available after ~15-20% of processing progress.
+    """
+    project = await project_repository.get(db, project_id)
+    if not project or not project.sparse_cloud_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sparse cloud not available yet")
+
+    sparse_path = Path(project.sparse_cloud_path)
+    project_dir = get_project_dir(project_id).resolve()
+    if not sparse_path.resolve().is_relative_to(project_dir):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid path")
+
+    if not sparse_path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sparse cloud file not found")
+
+    return FileResponse(sparse_path, media_type="application/json")
+
+
+@router.get("/{project_id}/bounds")
+async def get_project_bounds(
+    project_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    Return the WGS84 bounding box for the project area.
+    Priority: orthophoto COG bounds > image GPS (EXIF) > flight_area polygon.
+    Returns {west, south, east, north} or 404 if no spatial data available.
+    """
+    project = await project_repository.get(db, project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    # 1. Try full or preview orthophoto COG
+    def _cog_bounds(assets: dict | None) -> dict | None:
+        if not assets:
+            return None
+        for key, path_str in assets.items():
+            if "odm_orthophoto.tif" in key.lower():
+                p = Path(path_str)
+                if not p.exists():
+                    return None
+                try:
+                    import rasterio
+                    from rasterio.crs import CRS
+                    from rasterio.warp import transform_bounds
+
+                    with rasterio.open(p) as src:
+                        west, south, east, north = transform_bounds(
+                            src.crs, CRS.from_epsg(4326), *src.bounds
+                        )
+                    return {"west": west, "south": south, "east": east, "north": north}
+                except Exception:
+                    return None
+        return None
+
+    bounds = _cog_bounds(project.assets) or _cog_bounds(project.preview_assets)
+    if bounds:
+        return bounds
+
+    # 2. Image GPS bounding box — ground truth: where the images actually are
+    result = await db.execute(
+        select(ProjectImage.lat, ProjectImage.lon).where(
+            ProjectImage.project_id == project_id,
+            ProjectImage.lat.isnot(None),
+            ProjectImage.lon.isnot(None),
+        )
+    )
+    rows = result.all()
+    if rows:
+        lats = [r.lat for r in rows]
+        lons = [r.lon for r in rows]
+        return {
+            "west": min(lons),
+            "south": min(lats),
+            "east": max(lons),
+            "north": max(lats),
+        }
+
+    # 3. Fallback: flight_area polygon bounding box (planned area, may differ from actual images)
+    if project.flight_area is not None:
+        try:
+            flight_area_result = await db.execute(
+                select(func.ST_AsGeoJSON(Project.flight_area)).where(Project.id == project_id)
+            )
+            flight_area_geojson = flight_area_result.scalar_one_or_none()
+            if flight_area_geojson:
+                geom = json.loads(flight_area_geojson)
+                coords = geom.get("coordinates", [[]])[0]
+                if coords:
+                    lons = [c[0] for c in coords]
+                    lats = [c[1] for c in coords]
+                    return {
+                        "west": min(lons),
+                        "south": min(lats),
+                        "east": max(lons),
+                        "north": max(lats),
+                    }
+        except Exception:
+            pass
+
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No spatial data available")

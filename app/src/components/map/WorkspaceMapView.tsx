@@ -56,7 +56,7 @@ export function WorkspaceMapView({ panel, projectId, weatherTiles }: WorkspaceMa
         <MapBootstrapView focus={bootstrapFocus} />
         {showResults ? (
           <>
-            <ResultsMapInnerLayers />
+            <ResultsMapInnerLayers projectId={projectId} />
             {weatherTileLayers}
             {bottomLeftControls}
           </>

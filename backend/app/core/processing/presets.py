@@ -1,3 +1,15 @@
+FAST_PREVIEW_OPTIONS: dict = {
+    "orthophoto-resolution": 8,
+    "pc-quality": "lowest",
+    "feature-quality": "lowest",
+    "mesh-octree-depth": 9,
+    "dtm": False,
+    "dsm": False,
+    "fast-orthophoto": True,
+    "skip-report": True,
+    "min-num-features": 4000,
+}
+
 PROCESSING_PRESETS: dict[str, dict] = {
     "fast": {
         "orthophoto-resolution": 5,

@@ -3,6 +3,8 @@ import type { ResultLayerId } from '@/features/results/types'
 interface LayerSelectorProps {
   activeLayer: ResultLayerId
   onChange: (layer: ResultLayerId) => void
+  /** Quando true, mostra a camada de nuvem esparsa (GeoJSON SfM). */
+  sparseLayerUnlocked?: boolean
 }
 
 const labels: Record<ResultLayerId, string> = {
@@ -10,12 +12,17 @@ const labels: Record<ResultLayerId, string> = {
   dsm: 'MDS',
   dtm: 'MDT',
   contours: 'Curvas de Nivel',
+  sparse: 'Nuvem esparsa',
 }
 
-export function LayerSelector({ activeLayer, onChange }: LayerSelectorProps) {
+const baseLayers: ResultLayerId[] = ['orthophoto', 'dsm', 'dtm', 'contours']
+
+export function LayerSelector({ activeLayer, onChange, sparseLayerUnlocked = false }: LayerSelectorProps) {
+  const layers: ResultLayerId[] = sparseLayerUnlocked ? [...baseLayers, 'sparse'] : baseLayers
+
   return (
     <div className="inline-flex flex-wrap rounded-full border border-[#2e2e2e] bg-[#0f0f0f] p-1">
-      {(Object.keys(labels) as ResultLayerId[]).map((layer) => (
+      {layers.map((layer) => (
         <button
           key={layer}
           type="button"

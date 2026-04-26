@@ -8,5 +8,5 @@ import { useFlightStore } from '@/features/flight-planner/stores/useFlightStore'
 export function PlannerMapBaseLayer() {
   const id = useFlightStore((s) => s.plannerBaseLayer)
   const { url, attribution } = getPlannerBaseLayerConfig(id)
-  return <TileLayer key={id} url={url} attribution={attribution} maxZoom={19} />
+  return <TileLayer key={id} url={url} attribution={attribution} maxNativeZoom={19} maxZoom={22} />
 }

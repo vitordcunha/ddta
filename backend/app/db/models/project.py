@@ -25,6 +25,17 @@ class Project(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     processing_task_uuid: Mapped[str | None] = mapped_column(String(100), nullable=True)
     odm_task_uuid: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
+    # Preview task tracking
+    preview_task_uuid: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    preview_odm_task_uuid: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    preview_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    preview_progress: Mapped[int] = mapped_column(Integer, default=0)
+    preview_assets: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    sparse_cloud_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    processing_runs: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    preview_runs: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    last_processing_preset: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
     images = relationship("ProjectImage", back_populates="project", cascade="all, delete-orphan")
     calibration_sessions = relationship(
         "CalibrationSession",

@@ -1,6 +1,15 @@
 from fastapi import APIRouter
 
-from app.api.v1 import calibration_sessions, flight_plans, flightplan, processing, projects, sse
+from app.api.v1 import (
+    calibration_sessions,
+    flight_plans,
+    flightplan,
+    processing,
+    processing_queue,
+    projects,
+    sse,
+    tiles,
+)
 
 api_router = APIRouter()
 api_router.include_router(projects.router)
@@ -8,4 +17,6 @@ api_router.include_router(flightplan.router)
 api_router.include_router(flight_plans.router)
 api_router.include_router(calibration_sessions.router)
 api_router.include_router(processing.router)
+api_router.include_router(processing_queue.router)
 api_router.include_router(sse.router)
+api_router.include_router(tiles.router)

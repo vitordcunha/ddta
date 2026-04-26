@@ -2,6 +2,7 @@ import { Navigate, createBrowserRouter } from "react-router-dom"
 import { LegacyProjectPanelRedirect, LegacyProjectToWorkspace } from "@/router/legacyWorkspaceRedirects"
 import { WORKSPACE_ROOT } from "@/constants/routes"
 import { CalibrationSessionPage } from "@/pages/CalibrationSessionPage"
+import { ProcessingQueuePage } from "@/pages/ProcessingQueuePage"
 import { WorkspacePage } from "@/pages/WorkspacePage"
 
 export const router = createBrowserRouter([
@@ -14,5 +15,6 @@ export const router = createBrowserRouter([
   { path: "/projects/:id/upload", element: <LegacyProjectPanelRedirect panel="upload" /> },
   { path: "/projects/:id/results", element: <LegacyProjectPanelRedirect panel="results" /> },
   { path: "/calibration/:sessionId", element: <CalibrationSessionPage /> },
+  { path: "/processing-queue", element: <ProcessingQueuePage /> },
   { path: "*", element: <Navigate to={WORKSPACE_ROOT} replace /> },
 ])

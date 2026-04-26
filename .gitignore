@@ -60,6 +60,8 @@ htmlcov/
 # Local test / fixture data
 # =========================
 test-data/
+backend/data
+backend/data/projects/
 
 # =========================
 # Capacitor (native) — build & sync

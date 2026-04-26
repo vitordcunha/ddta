@@ -1,21 +1,29 @@
-import { Crosshair, Ruler, Square, Trash2 } from 'lucide-react'
-import { Button } from '@/components/ui'
-import { useResultsMapMeasurements } from '@/features/results/hooks/useResultsMapMeasurements'
-import { useResultsViewStore } from '@/features/results/stores/useResultsViewStore'
+import { Crosshair, Ruler, Square, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui";
+import { useResultsMapMeasurements } from "@/features/results/hooks/useResultsMapMeasurements";
+import { useResultsViewStore } from "@/features/results/stores/useResultsViewStore";
 
 export function ResultsMapToolsOverlay() {
-  const opacity = useResultsViewStore((s) => s.opacity)
-  const setOpacity = useResultsViewStore((s) => s.setOpacity)
-  const tool = useResultsViewStore((s) => s.tool)
-  const setTool = useResultsViewStore((s) => s.setTool)
-  const clearDrawing = useResultsViewStore((s) => s.clearDrawing)
-  const { distanceResult, areaResult, elevationPoint } = useResultsMapMeasurements()
+  const opacity = useResultsViewStore((s) => s.opacity);
+  const setOpacity = useResultsViewStore((s) => s.setOpacity);
+  const activeLayer = useResultsViewStore((s) => s.activeLayer);
+  const tool = useResultsViewStore((s) => s.tool);
+  const setTool = useResultsViewStore((s) => s.setTool);
+  const clearDrawing = useResultsViewStore((s) => s.clearDrawing);
+  const { distanceResult, areaResult, elevationPoint } =
+    useResultsMapMeasurements();
+
+  const showOpacitySlider = activeLayer !== "orthophoto";
+
+  if (!showOpacitySlider) return null;
 
   return (
     <>
-      <div className="pointer-events-auto absolute right-3 top-3 z-[2000] flex flex-col gap-2">
-        <div className="flex flex-col items-center gap-1 rounded-xl border border-[#2e2e2e] bg-[#171717]/90 p-2 backdrop-blur-md">
-          <span className="text-[10px] font-mono uppercase tracking-[1.2px] text-neutral-500">Opac</span>
+      <div className="pointer-events-auto absolute left-3 bottom-[50%] z-[2000] flex flex-col gap-2">
+        <div className="flex max-w-[4.25rem] flex-col items-center gap-1 rounded-xl border border-[#2e2e2e] bg-[#171717]/90 p-2 backdrop-blur-md">
+          <span className="text-[10px] font-mono uppercase tracking-[1.2px] text-neutral-500">
+            Opac
+          </span>
           <input
             type="range"
             min={0}
@@ -23,21 +31,33 @@ export function ResultsMapToolsOverlay() {
             value={opacity}
             onChange={(e) => setOpacity(Number(e.target.value))}
             className="h-28 [writing-mode:vertical-lr]"
-            aria-label="Opacidade da camada"
+            aria-label="Opacidade da camada ativa"
           />
         </div>
       </div>
 
       <div className="pointer-events-auto absolute bottom-3 left-3 z-[2000] flex flex-wrap gap-2 rounded-xl border border-[#2e2e2e] bg-[#171717]/90 p-2 backdrop-blur-md">
-        <Button size="sm" variant={tool === 'distance' ? 'primary' : 'outline'} onClick={() => setTool('distance')}>
+        <Button
+          size="sm"
+          variant={tool === "distance" ? "primary" : "outline"}
+          onClick={() => setTool("distance")}
+        >
           <Ruler className="mr-1 h-4 w-4" />
           Distancia
         </Button>
-        <Button size="sm" variant={tool === 'area' ? 'primary' : 'outline'} onClick={() => setTool('area')}>
+        <Button
+          size="sm"
+          variant={tool === "area" ? "primary" : "outline"}
+          onClick={() => setTool("area")}
+        >
           <Square className="mr-1 h-4 w-4" />
           Area
         </Button>
-        <Button size="sm" variant={tool === 'elevation' ? 'primary' : 'outline'} onClick={() => setTool('elevation')}>
+        <Button
+          size="sm"
+          variant={tool === "elevation" ? "primary" : "outline"}
+          onClick={() => setTool("elevation")}
+        >
           <Crosshair className="mr-1 h-4 w-4" />
           Cota
         </Button>
@@ -54,5 +74,5 @@ export function ResultsMapToolsOverlay() {
         </div>
       )}
     </>
-  )
+  );
 }

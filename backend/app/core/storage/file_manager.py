@@ -1,4 +1,6 @@
 import shutil
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID
 
@@ -49,26 +51,68 @@ def cleanup_temp(project_id: UUID, file_id: str) -> None:
     temp_dir = get_project_dir(project_id) / "temp" / file_id
     if not temp_dir.exists():
         return
-    for path in temp_dir.glob("*.part"):
-        path.unlink(missing_ok=True)
-    temp_dir.rmdir()
+    shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-def wipe_project_upload_scratch(project_id: UUID) -> None:
-    """Remove chunk temp dirs and image files on disk for a project (does not touch DB)."""
-    project_root = settings.storage_path / "projects" / str(project_id)
-    temp_root = project_root / "temp"
+def _project_storage_root(project_id: UUID) -> Path:
+    """Project data root under storage (no mkdir)."""
+    return settings.storage_path / "projects" / str(project_id)
+
+
+def clear_project_temp(project_id: UUID) -> None:
+    temp_root = _project_storage_root(project_id) / "temp"
     if temp_root.is_dir():
         shutil.rmtree(temp_root, ignore_errors=True)
-    images_dir = project_root / "images"
+
+
+def clear_project_image_files(project_id: UUID) -> None:
+    images_dir = _project_storage_root(project_id) / "images"
     if images_dir.is_dir():
         for path in images_dir.iterdir():
             if path.is_file():
                 path.unlink(missing_ok=True)
 
 
-def organize_results(project_id: UUID, odm_results_dir: Path) -> dict[str, str]:
-    destination = get_project_dir(project_id) / "results"
+def clear_project_preview_results_disk(project_id: UUID) -> None:
+    preview_dir = _project_storage_root(project_id) / "preview-results"
+    if preview_dir.is_dir():
+        shutil.rmtree(preview_dir, ignore_errors=True)
+
+
+def clear_project_sparse_cloud_disk(project_id: UUID) -> None:
+    root = _project_storage_root(project_id)
+    sparse_cloud = root / "sparse_cloud.geojson"
+    sparse_cloud.unlink(missing_ok=True)
+
+
+def clear_project_results_disk(project_id: UUID) -> None:
+    d = _project_storage_root(project_id) / "results"
+    if d.is_dir():
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def clear_project_processing_runs_disk(project_id: UUID) -> None:
+    d = _project_storage_root(project_id) / "processing-runs"
+    if d.is_dir():
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def clear_project_preview_runs_disk(project_id: UUID) -> None:
+    d = _project_storage_root(project_id) / "preview-runs"
+    if d.is_dir():
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def wipe_project_upload_scratch(project_id: UUID) -> None:
+    """Remove chunk temp dirs, image files, preview-results, and sparse cloud file (does not touch DB)."""
+    clear_project_temp(project_id)
+    clear_project_image_files(project_id)
+    clear_project_preview_results_disk(project_id)
+    clear_project_sparse_cloud_disk(project_id)
+
+
+def organize_results(project_id: UUID, odm_results_dir: Path, subdir: str = "results") -> dict[str, str]:
+    destination = get_project_dir(project_id) / subdir
     destination.mkdir(parents=True, exist_ok=True)
     assets: dict[str, str] = {}
     if not odm_results_dir.exists():
@@ -79,9 +123,80 @@ def organize_results(project_id: UUID, odm_results_dir: Path) -> dict[str, str]:
         relative = path.relative_to(odm_results_dir)
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(path.read_bytes())
+        if path.resolve() == target.resolve():
+            assets[relative.as_posix()] = str(target)
+            continue
+        shutil.copy2(path, target)
         assets[relative.as_posix()] = str(target)
     return assets
+
+
+def _remap_assets_under_dir(assets: dict[str, str], src_root: Path, dst_root: Path) -> dict[str, str]:
+    src_resolved = src_root.resolve()
+    dst_resolved = dst_root.resolve()
+    out: dict[str, str] = {}
+    for key, val in assets.items():
+        if not val:
+            continue
+        p = Path(val).expanduser().resolve()
+        try:
+            rel = p.relative_to(src_resolved)
+        except ValueError:
+            out[key] = val
+            continue
+        out[key] = str((dst_resolved / rel).resolve())
+    return out
+
+
+def archive_project_processing_run(
+    project_id: UUID,
+    preset_label: str,
+    stats: dict | None,
+    assets: dict[str, str] | None,
+) -> dict | None:
+    """Copia ``results/`` para ``processing-runs/<id>/results/`` e devolve entrada de histórico."""
+    if not assets:
+        return None
+    project_dir = get_project_dir(project_id)
+    src = project_dir / "results"
+    if not src.is_dir():
+        return None
+    run_id = str(uuid.uuid4())
+    dst = project_dir / "processing-runs" / run_id / "results"
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(src, dst)
+    new_assets = _remap_assets_under_dir(assets, src, dst)
+    return {
+        "run_id": run_id,
+        "preset": preset_label,
+        "completed_at": datetime.now(timezone.utc).isoformat(),
+        "stats": dict(stats) if stats else None,
+        "assets": new_assets,
+    }
+
+
+def archive_project_preview_run(
+    project_id: UUID,
+    preview_assets: dict[str, str] | None,
+) -> dict | None:
+    """Copia ``preview-results/`` para ``preview-runs/<id>/preview-results/``."""
+    if not preview_assets:
+        return None
+    project_dir = get_project_dir(project_id)
+    src = project_dir / "preview-results"
+    if not src.is_dir():
+        return None
+    run_id = str(uuid.uuid4())
+    dst = project_dir / "preview-runs" / run_id / "preview-results"
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(src, dst)
+    new_assets = _remap_assets_under_dir(preview_assets, src, dst)
+    return {
+        "run_id": run_id,
+        "kind": "fast_preview",
+        "completed_at": datetime.now(timezone.utc).isoformat(),
+        "preview_assets": new_assets,
+    }
 
 
 def upload_to_storage(local_path: Path, bucket: str, key: str) -> str:

@@ -1,23 +1,23 @@
-import { useEffect } from "react"
-import { useSearchParams } from "react-router-dom"
-import { FloatingPanel } from "@/components/ui/FloatingPanel"
-import { WorkspaceMapView } from "@/components/map/WorkspaceMapView"
-import { WeatherLayerMapControls } from "@/components/map/WeatherLayerMapControls"
-import { useWorkspaceMapWeather } from "@/components/map/useWorkspaceMapWeather"
-import { WorkspaceLayoutPanel } from "@/components/layout/WorkspaceLayoutPanel"
-import { WorkspaceTopBar } from "@/components/layout/WorkspaceTopBar"
-import { SettingsForm } from "@/components/workspace/SettingsForm"
-import { FlightPlannerConfigPanel } from "@/features/flight-planner/components/FlightPlannerConfigPanel"
-import { PlannerIconSidebar } from "@/features/flight-planner/components/PlannerIconSidebar"
-import type { PersistedFlightPlan } from "@/features/flight-planner/stores/useFlightStore"
-import { ProjectsWorkspacePanel } from "@/features/projects/components/ProjectsWorkspacePanel"
-import { useProjects } from "@/features/projects/hooks/useProjects"
-import { ResultsMapToolsOverlay } from "@/features/results/components/ResultsMapToolsOverlay"
-import { ResultsWorkspacePanel } from "@/features/results/components/ResultsWorkspacePanel"
-import { useResultsViewStore } from "@/features/results/stores/useResultsViewStore"
-import { UploadWorkspacePanel } from "@/features/upload/components/UploadWorkspacePanel"
-import { type WorkspacePanelId, parseWorkspacePanel } from "@/constants/routes"
-import { cn } from "@/lib/utils"
+import { useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
+import { FloatingPanel } from "@/components/ui/FloatingPanel";
+import { WorkspaceMapView } from "@/components/map/WorkspaceMapView";
+import { WeatherLayerMapControls } from "@/components/map/WeatherLayerMapControls";
+import { useWorkspaceMapWeather } from "@/components/map/useWorkspaceMapWeather";
+import { WorkspaceLayoutPanel } from "@/components/layout/WorkspaceLayoutPanel";
+import { WorkspaceTopBar } from "@/components/layout/WorkspaceTopBar";
+import { SettingsForm } from "@/components/workspace/SettingsForm";
+import { FlightPlannerConfigPanel } from "@/features/flight-planner/components/FlightPlannerConfigPanel";
+import { PlannerIconSidebar } from "@/features/flight-planner/components/PlannerIconSidebar";
+import type { PersistedFlightPlan } from "@/features/flight-planner/stores/useFlightStore";
+import { ProjectsWorkspacePanel } from "@/features/projects/components/ProjectsWorkspacePanel";
+import { useProjects } from "@/features/projects/hooks/useProjects";
+import { ResultsMapToolsOverlay } from "@/features/results/components/ResultsMapToolsOverlay";
+import { ResultsWorkspacePanel } from "@/features/results/components/ResultsWorkspacePanel";
+import { useResultsViewStore } from "@/features/results/stores/useResultsViewStore";
+import { UploadWorkspacePanel } from "@/features/upload/components/UploadWorkspacePanel";
+import { type WorkspacePanelId, parseWorkspacePanel } from "@/constants/routes";
+import { cn } from "@/lib/utils";
 
 const PANEL_TITLES: Record<
   WorkspacePanelId,
@@ -25,62 +25,52 @@ const PANEL_TITLES: Record<
 > = {
   projects: {
     title: "Projetos",
-    subtitle:
-      "Escolha um projeto ou crie um novo; o mapa permanece no fundo.",
+    subtitle: "Escolha um projeto ou crie um novo; o mapa permanece no fundo.",
   },
   plan: { title: "Planejador de voo" },
   upload: { title: "Upload de imagens" },
   results: { title: "Resultados e entregas" },
   settings: { title: "Configuracoes" },
-}
+};
 
 function renderWorkspacePanel(
   panel: WorkspacePanelId,
   ctx: {
-    projectId: string | null
-    project: ReturnType<ReturnType<typeof useProjects>["getProject"]>
-    initialPlan: PersistedFlightPlan | null
-    saveFlightPlan: ReturnType<typeof useProjects>["saveFlightPlan"]
+    projectId: string | null;
+    project: ReturnType<ReturnType<typeof useProjects>["getProject"]>;
+    initialPlan: PersistedFlightPlan | null;
+    saveFlightPlan: ReturnType<typeof useProjects>["saveFlightPlan"];
   },
 ) {
-  const { projectId, project, initialPlan, saveFlightPlan } = ctx
-  const { title, subtitle } = PANEL_TITLES[panel]
+  const { projectId, project, initialPlan, saveFlightPlan } = ctx;
+  const { title, subtitle } = PANEL_TITLES[panel];
 
   if (panel === "projects") {
     return (
-      <FloatingPanel
-        title={title}
-        subtitle={subtitle}
-      >
+      <FloatingPanel title={title} subtitle={subtitle}>
         <ProjectsWorkspacePanel />
       </FloatingPanel>
-    )
+    );
   }
 
   if (panel === "settings") {
     return (
-      <FloatingPanel
-        title={title}
-        subtitle="Preferencias e contexto da API."
-      >
+      <FloatingPanel title={title} subtitle="Preferencias e contexto da API.">
         <SettingsForm />
       </FloatingPanel>
-    )
+    );
   }
 
   if (panel === "plan") {
     if (!projectId) {
       return (
-        <FloatingPanel
-          title={title}
-          subtitle="Associe um projeto"
-        >
+        <FloatingPanel title={title} subtitle="Associe um projeto">
           <p className="text-sm text-[#b4b4b4]">
             Selecione um projeto no seletor da barra superior para editar a area
             de voo, parametros e exportacao KMZ.
           </p>
         </FloatingPanel>
-      )
+      );
     }
     if (!project) {
       return (
@@ -92,7 +82,7 @@ function renderWorkspacePanel(
             Este ID nao corresponde a nenhum projeto no workspace atual.
           </p>
         </FloatingPanel>
-      )
+      );
     }
     return (
       <FloatingPanel
@@ -106,37 +96,31 @@ function renderWorkspacePanel(
           projectId={projectId}
           initialPlan={initialPlan}
           onSavePlan={async (p) => {
-            await saveFlightPlan(projectId, p)
+            await saveFlightPlan(projectId, p);
           }}
         />
       </FloatingPanel>
-    )
+    );
   }
 
   if (panel === "upload") {
     return (
-      <FloatingPanel
-        title={title}
-        subtitle={project?.name}
-      >
+      <FloatingPanel title={title} subtitle={project?.name}>
         <UploadWorkspacePanel projectId={projectId} />
       </FloatingPanel>
-    )
+    );
   }
 
   if (panel === "results") {
     if (!projectId) {
       return (
-        <FloatingPanel
-          title={title}
-          subtitle="Associe um projeto"
-        >
+        <FloatingPanel title={title} subtitle="Associe um projeto">
           <p className="text-sm text-[#b4b4b4]">
             Selecione um projeto no topo para acompanhar processamento e
             entregas.
           </p>
         </FloatingPanel>
-      )
+      );
     }
     if (!project) {
       return (
@@ -148,67 +132,63 @@ function renderWorkspacePanel(
             Este ID nao corresponde a nenhum projeto no workspace atual.
           </p>
         </FloatingPanel>
-      )
+      );
     }
     return (
-      <FloatingPanel
-        key={projectId}
-        title={title}
-        subtitle={project.name}
-      >
+      <FloatingPanel key={projectId} title={title} subtitle={project.name}>
         <ResultsWorkspacePanel projectId={projectId} />
       </FloatingPanel>
-    )
+    );
   }
 
-  return null
+  return null;
 }
 
 export function WorkspacePage() {
-  const [searchParams, setSearchParams] = useSearchParams()
-  const { getProject, saveFlightPlan } = useProjects()
-  const panel = parseWorkspacePanel(searchParams.get("panel"))
-  const projectId = searchParams.get("project")
-  const resetResultsUi = useResultsViewStore((s) => s.reset)
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { getProject, saveFlightPlan } = useProjects();
+  const panel = parseWorkspacePanel(searchParams.get("panel"));
+  const projectId = searchParams.get("project");
+  const resetResultsUi = useResultsViewStore((s) => s.reset);
 
-  const project = projectId ? getProject(projectId) : undefined
+  const project = projectId ? getProject(projectId) : undefined;
 
   useEffect(() => {
     if (!searchParams.get("panel")) {
       setSearchParams(
         (prev) => {
-          const n = new URLSearchParams(prev)
-          n.set("panel", "projects")
-          return n
+          const n = new URLSearchParams(prev);
+          n.set("panel", "projects");
+          return n;
         },
         { replace: true },
-      )
+      );
     }
-  }, [searchParams, setSearchParams])
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
-    if (panel !== "results") resetResultsUi()
-  }, [panel, resetResultsUi])
+    if (panel !== "results") resetResultsUi();
+  }, [panel, resetResultsUi]);
 
-  const initialPlan: PersistedFlightPlan | null =
-    !project?.flightPlan?.plannerData
-      ? null
-      : (project.flightPlan.plannerData as PersistedFlightPlan)
+  const initialPlan: PersistedFlightPlan | null = !project?.flightPlan
+    ?.plannerData
+    ? null
+    : (project.flightPlan.plannerData as PersistedFlightPlan);
 
   const collapsedLabel = project?.name
     ? `${PANEL_TITLES[panel].title} — ${project.name}`
-    : PANEL_TITLES[panel].title
+    : PANEL_TITLES[panel].title;
 
-  const showPlanChrome = panel === "plan" && Boolean(projectId)
-  const showResultsChrome = panel === "results" && Boolean(projectId)
-  const mapWeather = useWorkspaceMapWeather()
+  const showPlanChrome = panel === "plan" && Boolean(projectId);
+  const showResultsChrome = panel === "results" && Boolean(projectId);
+  const mapWeather = useWorkspaceMapWeather();
 
   const mainPanel = renderWorkspacePanel(panel, {
     projectId,
     project,
     initialPlan,
     saveFlightPlan,
-  })
+  });
 
   return (
     <div className="fixed inset-0 z-0 overflow-hidden bg-[#0f0f0f] text-[#fafafa]">
@@ -297,5 +277,5 @@ export function WorkspacePage() {
         </div>
       </div>
     </div>
-  )
+  );
 }

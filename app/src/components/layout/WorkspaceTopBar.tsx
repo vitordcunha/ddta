@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { ChevronDown } from 'lucide-react'
-import { useSearchParams } from 'react-router-dom'
+import { NavLink, useSearchParams } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import {
   type WorkspacePanelId,
@@ -102,6 +102,20 @@ export function WorkspaceTopBar() {
                 </button>
               )
             })}
+            <NavLink
+              to="/processing-queue"
+              className={({ isActive }) =>
+                cn(
+                  "touch-target shrink-0 rounded-full border px-3 text-sm font-medium transition",
+                  isActive
+                    ? "border-[rgba(62,207,142,0.35)] bg-[#0f0f0f] text-[#fafafa]"
+                    : "border-[#2e2e2e] bg-transparent text-[#b4b4b4] hover:border-[#393939] hover:text-[#fafafa]",
+                )
+              }
+              title="Fila Celery e tarefas NodeODM"
+            >
+              Fila ODM
+            </NavLink>
           </div>
         </div>
 
