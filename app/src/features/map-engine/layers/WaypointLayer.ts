@@ -26,9 +26,9 @@ export function createWaypointLayer(
     fillColor: fillColorFor(i, total),
   }))
 
-  // Lightweight position hash: avoids full GPU buffer re-upload when only
-  // the selection changes (and vice-versa for colors).
-  const posHash = `${total},${waypointsSorted[0]?.lat ?? 0},${waypointsSorted[total - 1]?.lat ?? 0}`
+  // Lightweight position hash (O.6).
+  const midI = total > 0 ? Math.floor((total - 1) / 2) : 0
+  const posHash = `${total},${waypointsSorted[0]?.lat ?? 0},${waypointsSorted[midI]?.lat ?? 0},${waypointsSorted[total - 1]?.lat ?? 0}`
 
   return new ScatterplotLayer({
     id: 'waypoints',

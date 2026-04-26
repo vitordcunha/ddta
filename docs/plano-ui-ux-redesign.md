@@ -426,9 +426,79 @@ O slider vertical de opacidade (`left-3 bottom-[50%]`) é removido do `ResultsMa
 | 7 | DroneModelManager → Config | `SettingsForm.tsx`, `DroneModelSection.tsx` | Remove CRUD do planejador |
 | 8 | FlightPlannerExpandedModal (estrutura + tabs) | novo `FlightPlannerExpandedModal.tsx` | Modal com conteúdo detalhado |
 | 9 | Migrar seções para o modal expandido | `FlightPlannerConfigPanel.tsx` | Move conteúdo para o local certo |
-| 10 | Terrain toggle switch + AlertDialog | `FlightPlannerConfigPanel.tsx` | Melhora touch UX |
+| 10 | Terrain toggle switch + AlertDialog | `FlightPlannerConfigPanel.tsx`, `components/ui/Switch.tsx`, `components/ui/AlertDialog.tsx` | Melhora touch UX |
 | 11 | WorkspaceTopBar: Combobox de projeto | `WorkspaceTopBar.tsx` | Melhora seleção de projeto em tablet |
 | 12 | Opacidade inline no painel de resultados | `ResultsWorkspacePanel.tsx`, `ResultsMapToolsOverlay.tsx` | Limpa o mapa |
+
+---
+
+## Estado de implementação (checklist)
+
+*Última revisão do código: 26 abr 2026 (checklist alinhado ao estado do repositório).*
+
+Legenda: `[x]` feito · `[ ]` por fazer · `[~]` parcial ou só preparado (código existe mas não integrado / não cumpre 100% a spec)
+
+### Fase 1 — Sistema de layout consciente
+
+- [x] **1.1** Variáveis CSS no raiz (`WorkspacePage`): `--right-panel-width`, `--left-sidebar-width`, `--topbar-height`; `--right-panel-width` sincronizada com abrir/fechar do painel via `onOpenChange` em `WorkspaceLayoutPanel`. As mesmas variáveis são espelhadas em `document.documentElement` para conteúdo em portal (ex.: planejador expandido) herdar posicionamento.
+- [x] **1.2** `WindIndicatorOverlay` removido de `LeafletMapView`, `MapboxMapView` e `GoogleMapsView`; renderizado em `WorkspacePage` com `right`/`bottom` usando `--right-panel-width` e safe area; componente sem posicionamento absoluto próprio.
+- [x] **1.3** Resultado de medição em `ResultsMapToolsOverlay` com `right: calc(var(--right-panel-width, 0px) + 0.75rem)`.
+- [x] **1.4** Sidebar com `overflow-y-auto` e `max-height` baseada em `--topbar-height` (e margem inferior). Controlo “Grade de rota” removido da sidebar (ver Fase 6).
+
+### Fase 2 — Navbar e seleção de projeto
+
+- [x] **2.1** Substituir `<select>` de projeto em `WorkspaceTopBar` por combobox/popover com busca, itens ≥44px e “Novo projeto”.
+- [x] **2.2** Uniformizar “Fila ODM” (painel no workspace ou sinalização visual de rota externa).
+
+### Fase 3 — Planejador: modo compacto
+
+- [x] **3.1** `FlightPlannerConfigPanel` em modo compacto (drone + “Trocar drone”, perfil de qualidade, altitude + GSD, CTAs); estado vazio sem polígono; secções avançadas no `FlightPlannerExpandedModal` (tabs).
+- [x] **3.2** `MissionSummaryBar` integrado no painel (bloco sticky no fundo com polígono), 6 métricas + skeletons ao calcular.
+- [x] **3.3** Clima no compacto como botão/badge clicável que abre o modal na tab “Clima & Solar”.
+
+### Fase 4 — Drone picker
+
+- [x] **4.1** `DronePicker` (bottom sheet abaixo de `lg` / 1024px; modal compacto no desktop) com cards touch-friendly.
+- [x] **4.2** `DroneModelManager` apenas em Config (`SettingsForm` + secção frota); link “Gerenciar frota” no picker; `DroneModelSection` / `<select>` removidos do planejador.
+
+### Fase 5 — Modal expandido
+
+- [x] **5.1** `FlightPlannerExpandedModal`: portal em `document.body`, sheet à direita `w-[min(90vw,720px)]`, em portrait `≤767px` bottom sheet com altura ~80% (`h-[min(80dvh,920px)]`), animação slide, mapa interactivo fora do sheet (`pointer-events-none` no wrapper), tabs Missão / Clima & Solar / Calibração / Exportar, `FlightQualityScoreBadge` no cabeçalho e na tab Exportar, título `Planejador — {projeto}`. Conteúdo das tabs ainda em `FlightPlannerConfigPanel` (extract opcional para `Planner*Tab.tsx`).
+- [x] **5.2** Persistência: `localStorage` em `plannerUiPersistence.ts` (chave `flight:plannerUiShell`: `expandedOpen`, `activeTab`), sincronizada no `FlightPlannerConfigPanel`.
+
+### Fase 6 — Sidebar simplificada
+
+- [x] Remoção de “Grade de rota” e hint de rotação `[ / ] rot.` (hint atual só cobre Navegar/Desenhar).
+- [x] Grupos contextuais (POI com polígono; fechar/desfazer/limpar com draft ou polígono) com `AnimatePresence`.
+- [x] Dois grupos “puros” na faixa: **Grupo 1** — Navegar, Desenhar, Estilo do mapa, Clima (um único `SidebarGroup`); **Grupo 2** — contexto de missão num único cartão animado (POI + separador se draft + Fechar/Desfazer/Limpar). `FlightPlannerModeHint` retirado da sidebar (atalhos N/D/U/Z permanecem nos `aria-label` dos botões).
+
+### Fase 7 — Componentes de input
+
+- [x] **7.1** Terrain following: checkbox substituído por `<Switch>` Radix (`components/ui/Switch.tsx`), trilho ~44px de altura; integrado no `FlightPlannerConfigPanel` com `aria-labelledby`.
+- [x] **7.2** Remoção de sessão de calibração: `window.confirm` substituído por `AlertDialog` Radix (`components/ui/AlertDialog.tsx`), controlado no `FlightPlannerConfigPanel`.
+- [x] **7.3** Histórico de calibração: linhas com `min-h-[44px]`; acções «Usar no planejador» e remover com `min-h-11` / `min-w-11` (≥44px).
+
+### Fase 8 — Resultados
+
+- [x] **8.1** `ResultsMapToolsOverlay`: resultado de medição alinhado ao `--right-panel-width`.
+- [x] **8.2** Opacidade: controlo horizontal no `ResultsWorkspacePanel`; sem slider vertical flutuante no overlay do mapa.
+
+### Tabela “Ordem de implementação” (resumo)
+
+| # | Estado |
+|---|--------|
+| 1 | Feito |
+| 2 | Feito |
+| 3 | Feito |
+| 4 | Feito |
+| 5 | Feito |
+| 6 | Feito |
+| 7 | Feito |
+| 8 | Feito |
+| 9 | Parcial (conteúdo das tabs no `FlightPlannerConfigPanel`; ficheiros `Planner*Tab.tsx` opcionais) |
+| 10 | Feito (`Switch` + `AlertDialog`; Fase 7) |
+| 11 | Feito |
+| 12 | Feito |
 
 ---
 
@@ -461,13 +531,16 @@ Todas as mudanças acima devem seguir estas regras não negociáveis:
 
 ## Arquivos novos a criar
 
-| Arquivo | Descrição |
-|---------|-----------|
-| `app/src/features/flight-planner/components/FlightPlannerExpandedModal.tsx` | Modal expandido com tabs |
-| `app/src/features/flight-planner/components/DronePicker.tsx` | Picker visual de drone (bottom sheet / modal) |
-| `app/src/features/flight-planner/components/MissionSummaryBar.tsx` | Barra de resumo sempre visível |
-| `app/src/features/flight-planner/components/PlannerMissionTab.tsx` | Conteúdo da tab Missão no modal |
-| `app/src/features/flight-planner/components/PlannerWeatherTab.tsx` | Conteúdo da tab Clima & Solar no modal |
-| `app/src/features/flight-planner/components/PlannerCalibrationTab.tsx` | Conteúdo da tab Calibração no modal |
-| `app/src/features/flight-planner/components/PlannerExportTab.tsx` | Conteúdo da tab Exportar no modal |
-| `app/src/context/PlannerLayoutContext.tsx` | (opcional) Context para `--right-panel-width` se preferir React state ao invés de CSS var direta |
+| Arquivo | Descrição | Estado |
+|---------|-----------|--------|
+| `app/src/features/flight-planner/components/FlightPlannerExpandedModal.tsx` | Modal expandido com tabs | Criado (portal + sheet; conteúdo passado pelo `FlightPlannerConfigPanel`) |
+| `app/src/features/flight-planner/utils/plannerUiPersistence.ts` | Persistência shell expandido/tab (`localStorage`) | Criado |
+| `app/src/features/flight-planner/components/DronePicker.tsx` | Picker visual de drone (bottom sheet / modal) | Criado |
+| `app/src/features/flight-planner/components/MissionSummaryBar.tsx` | Barra de resumo sempre visível | Criado; **em uso** no painel compacto (sticky) |
+| `app/src/components/ui/Switch.tsx` | Toggle Radix (terrain following, ~44px) | Criado |
+| `app/src/components/ui/AlertDialog.tsx` | Diálogo de confirmação Radix (ex.: remover sessão de calibração) | Criado |
+| `app/src/features/flight-planner/components/PlannerMissionTab.tsx` | Conteúdo da tab Missão no modal | Não criado (lógica ainda em `FlightPlannerConfigPanel`) |
+| `app/src/features/flight-planner/components/PlannerWeatherTab.tsx` | Conteúdo da tab Clima & Solar no modal | Não criado (idem) |
+| `app/src/features/flight-planner/components/PlannerCalibrationTab.tsx` | Conteúdo da tab Calibração no modal | Não criado (idem) |
+| `app/src/features/flight-planner/components/PlannerExportTab.tsx` | Conteúdo da tab Exportar no modal | Não criado (idem) |
+| `app/src/context/PlannerLayoutContext.tsx` | (opcional) Context para `--right-panel-width` | Não necessário: vars no `WorkspacePage` (+ espelho em `document.documentElement` para portais) |

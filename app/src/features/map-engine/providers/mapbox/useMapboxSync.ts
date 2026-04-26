@@ -15,7 +15,7 @@ type MoveEndEvent = {
  * (ex.: troca de provedor ou foco externo).
  */
 export function useMapboxSync(mapRef: React.RefObject<MapRef | null>) {
-  const { center, zoom, setCenterZoom } = useMapEngine()
+  const { center, zoom, setCenterZoom, deviceTier } = useMapEngine()
   const applyingFromContext = useRef(false)
 
   const onMoveEnd = useCallback(
@@ -36,15 +36,24 @@ export function useMapboxSync(mapRef: React.RefObject<MapRef | null>) {
     const sameLng = Math.abs(mc.lng - center[1]) < 1e-7
     if (sameLat && sameLng && z === zoom) return
     applyingFromContext.current = true
-    map.jumpTo({
-      center: [center[1], center[0]],
-      zoom,
-    })
+    if (deviceTier === 'high') {
+      map.flyTo({
+        center: [center[1], center[0]],
+        zoom,
+        duration: 800,
+        essential: true,
+      })
+    } else {
+      map.jumpTo({
+        center: [center[1], center[0]],
+        zoom,
+      })
+    }
     const id = requestAnimationFrame(() => {
       applyingFromContext.current = false
     })
     return () => cancelAnimationFrame(id)
-  }, [center, zoom, mapRef])
+  }, [center, zoom, mapRef, deviceTier])
 
   return { onMoveEnd }
 }

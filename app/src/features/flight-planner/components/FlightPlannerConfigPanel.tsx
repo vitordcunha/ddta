@@ -15,6 +15,7 @@ import {
   Camera,
   Check,
   ChevronDown,
+  ChevronRight,
   Clock,
   Cloud,
   CloudRain,
@@ -30,6 +31,7 @@ import {
   Moon,
   Mountain,
   Navigation,
+  PenLine,
   Ruler,
   Sun,
   Thermometer,
@@ -39,10 +41,26 @@ import {
   Wind,
   Zap,
 } from "lucide-react";
-import { Badge, Button, Card } from "@/components/ui";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogOverlay,
+  AlertDialogPortal,
+  AlertDialogTitle,
+  Badge,
+  Button,
+  Card,
+  Switch,
+} from "@/components/ui";
 import { cn } from "@/lib/utils";
+import {
+  readUserPreferencesFromStorage,
+  USER_PREFERENCES_UPDATED_EVENT,
+} from "@/constants/userPreferences";
 import { DroneIllustration } from "@/features/flight-planner/components/DroneIllustration";
-import { DroneModelSection } from "@/features/flight-planner/components/DroneModelSection";
+import { DronePicker } from "@/features/flight-planner/components/DronePicker";
 import { useDroneModelsQuery } from "@/features/flight-planner/hooks/useDroneModelsQuery";
 import { getDroneSpec } from "@/features/flight-planner/utils/droneSpecs";
 import {
@@ -101,6 +119,15 @@ import {
   calculateSpacings,
 } from "@/features/flight-planner/utils/waypointCalculator";
 import { FlightQualityScoreBadge } from "@/features/flight-planner/components/FlightQualityScoreBadge";
+import { MissionSummaryBar } from "@/features/flight-planner/components/MissionSummaryBar";
+import {
+  FlightPlannerExpandedModal,
+  type PlannerExpandedTabId,
+} from "@/features/flight-planner/components/FlightPlannerExpandedModal";
+import {
+  readPlannerShellPrefs,
+  writePlannerShellPrefs,
+} from "@/features/flight-planner/utils/plannerUiPersistence";
 import { useCalibrationSession } from "@/features/flight-planner/hooks/useCalibrationSession";
 import { useMapEngine } from "@/features/map-engine/useMapEngine";
 import { MapRouteDeckVisibilityToggles } from "@/features/map-engine/components/MapRouteDeckVisibilityToggles";
@@ -247,6 +274,28 @@ export function FlightPlannerConfigPanel({
     CalibrationSessionListItem[]
   >([]);
   const [calibrationUploadOpen, setCalibrationUploadOpen] = useState(false);
+  const [calibrationSessionPendingDeleteId, setCalibrationSessionPendingDeleteId] =
+    useState<string | null>(null);
+  const [deletingCalibrationSessionId, setDeletingCalibrationSessionId] =
+    useState<string | null>(null);
+  const [expandedPlannerOpen, setExpandedPlannerOpen] = useState(
+    () => readPlannerShellPrefs().expandedOpen,
+  );
+  const [dronePickerOpen, setDronePickerOpen] = useState(false);
+  const [userPrefRevision, setUserPrefRevision] = useState(0);
+  const [expandedPlannerTab, setExpandedPlannerTab] =
+    useState<PlannerExpandedTabId>(() => readPlannerShellPrefs().activeTab);
+  useEffect(() => {
+    const on = () => setUserPrefRevision((n) => n + 1);
+    window.addEventListener(USER_PREFERENCES_UPDATED_EVENT, on);
+    return () => window.removeEventListener(USER_PREFERENCES_UPDATED_EVENT, on);
+  }, []);
+  useEffect(() => {
+    writePlannerShellPrefs({
+      expandedOpen: expandedPlannerOpen,
+      activeTab: expandedPlannerTab,
+    });
+  }, [expandedPlannerOpen, expandedPlannerTab]);
   const [calibrationSessionRevision, setCalibrationSessionRevision] =
     useState(0);
   const { session: activeCalibrationSession } = useCalibrationSession(
@@ -288,8 +337,6 @@ export function FlightPlannerConfigPanel({
     params.sideOverlap,
   ]);
 
-  const [deletingCalibrationSessionId, setDeletingCalibrationSessionId] =
-    useState<string | null>(null);
   const [solarNow, setSolarNow] = useState(() => new Date());
 
   const loadCalibrationSessions = useCallback(async () => {
@@ -300,6 +347,31 @@ export function FlightPlannerConfigPanel({
       setCalibrationSessions([]);
     }
   }, [projectId]);
+
+  const confirmDeleteCalibrationSession = useCallback(async () => {
+    const id = calibrationSessionPendingDeleteId;
+    if (!id) return;
+    setDeletingCalibrationSessionId(id);
+    try {
+      await projectsService.deleteCalibrationSession(projectId, id);
+      if (calibrationSessionId === id) {
+        setCalibrationSessionId(null);
+        setCalibrationSessionRevision((n) => n + 1);
+      }
+      setCalibrationSessions((prev) => prev.filter((row) => row.id !== id));
+      toast.success("Sessão removida.");
+    } catch {
+      toast.error("Não foi possível remover a sessão.");
+    } finally {
+      setDeletingCalibrationSessionId(null);
+      setCalibrationSessionPendingDeleteId(null);
+    }
+  }, [
+    calibrationSessionId,
+    calibrationSessionPendingDeleteId,
+    projectId,
+    setCalibrationSessionId,
+  ]);
 
   useEffect(() => {
     void loadCalibrationSessions();
@@ -426,12 +498,25 @@ export function FlightPlannerConfigPanel({
   useEffect(() => {
     if (!droneCatalog?.length || params.droneModelId) return;
     const named = droneCatalog.find((m) => m.name === params.droneModel);
-    const fallback = droneCatalog.find((m) => m.is_default) ?? droneCatalog[0];
+    const prefs = readUserPreferencesFromStorage();
+    const fromUserDefault =
+      prefs.defaultDroneModelId != null
+        ? droneCatalog.find((m) => m.id === prefs.defaultDroneModelId)
+        : undefined;
+    const apiFallback =
+      droneCatalog.find((m) => m.is_default) ?? droneCatalog[0];
+    const fallback = fromUserDefault ?? apiFallback;
     const pick = named ?? fallback;
     if (pick) {
       setParams({ droneModelId: pick.id, droneModel: pick.name });
     }
-  }, [droneCatalog, params.droneModelId, params.droneModel, setParams]);
+  }, [
+    droneCatalog,
+    params.droneModelId,
+    params.droneModel,
+    setParams,
+    userPrefRevision,
+  ]);
 
   const calibrationOpticsSnapshot = useMemo(
     () => profileToCalibrationSnapshotFields(resolveFlightDroneProfile(params, droneCatalog)),
@@ -515,69 +600,317 @@ export function FlightPlannerConfigPanel({
           transition={{ duration: 0.25 }}
         >
           <Card className="glass-card overflow-hidden p-0">
-            <div className="relative flex items-center gap-4 px-4 py-3">
-              {/* Subtle gradient background */}
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary-500/[0.07] via-transparent to-transparent" />
-              {/* Drone illustration */}
-              <div className="relative shrink-0">
-                <div className="flex h-20 w-20 items-center justify-center rounded-xl bg-white/[0.04] ring-1 ring-white/[0.08]">
-                  {droneSpec.image ? (
-                    <img
-                      src={droneSpec.image}
-                      alt={params.droneModel}
-                      className="w-full h-full object-contain"
-                    />
-                  ) : (
-                    <DroneIllustration model={params.droneModel} />
-                  )}
+            <button
+              type="button"
+              className="group flex w-full flex-col text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary-500/55 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a]"
+              onClick={() => setDronePickerOpen(true)}
+            >
+              <div className="relative flex items-center gap-4 px-4 py-3">
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary-500/[0.07] via-transparent to-transparent" />
+                <div className="relative shrink-0">
+                  <div className="flex h-20 w-20 items-center justify-center rounded-xl bg-white/[0.04] ring-1 ring-white/[0.08]">
+                    {droneSpec.image ? (
+                      <img
+                        src={droneSpec.image}
+                        alt=""
+                        className="h-full w-full object-contain"
+                      />
+                    ) : (
+                      <DroneIllustration model={params.droneModel} />
+                    )}
+                  </div>
+                </div>
+                <div className="relative min-w-0 flex-1 space-y-2">
+                  <div>
+                    <p className="text-[10px] font-medium uppercase tracking-wider text-neutral-500">
+                      Drone selecionado
+                    </p>
+                    <h2 className="text-base font-semibold tracking-tight text-white">
+                      {params.droneModel}
+                    </h2>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                    <span className="flex items-center gap-1 text-neutral-400">
+                      <Battery className="size-3 text-primary-400/80" />
+                      <span className="text-neutral-200">
+                        {droneSpec.batteryTimeMin} min
+                      </span>
+                    </span>
+                    <span className="flex items-center gap-1 text-neutral-400">
+                      <Zap className="size-3 text-amber-400/80" />
+                      <span className="text-neutral-200">
+                        {droneSpec.maxSpeedMs} m/s máx
+                      </span>
+                    </span>
+                    <span className="flex items-center gap-1 text-neutral-400">
+                      <Camera className="size-3 text-sky-400/80" />
+                      <span className="text-neutral-200">
+                        {(
+                          (droneSpec.imageWidthPx * droneSpec.imageHeightPx) /
+                          1_000_000
+                        ).toFixed(0)}{" "}
+                        MP
+                      </span>
+                    </span>
+                    <span className="flex items-center gap-1 text-neutral-400">
+                      <Focus className="size-3 text-violet-400/80" />
+                      <span className="text-neutral-200">
+                        {droneSpec.focalLengthMm} mm
+                      </span>
+                    </span>
+                  </div>
                 </div>
               </div>
-              {/* Model info */}
-              <div className="min-w-0 flex-1 space-y-2">
-                <div>
-                  <p className="text-[10px] font-medium uppercase tracking-wider text-neutral-500">
-                    Drone selecionado
-                  </p>
-                  <h2 className="text-base font-semibold tracking-tight text-white">
-                    {params.droneModel}
-                  </h2>
-                </div>
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
-                  <span className="flex items-center gap-1 text-neutral-400">
-                    <Battery className="size-3 text-primary-400/80" />
-                    <span className="text-neutral-200">
-                      {droneSpec.batteryTimeMin} min
-                    </span>
-                  </span>
-                  <span className="flex items-center gap-1 text-neutral-400">
-                    <Zap className="size-3 text-amber-400/80" />
-                    <span className="text-neutral-200">
-                      {droneSpec.maxSpeedMs} m/s máx
-                    </span>
-                  </span>
-                  <span className="flex items-center gap-1 text-neutral-400">
-                    <Camera className="size-3 text-sky-400/80" />
-                    <span className="text-neutral-200">
-                      {(
-                        (droneSpec.imageWidthPx * droneSpec.imageHeightPx) /
-                        1_000_000
-                      ).toFixed(0)}{" "}
-                      MP
-                    </span>
-                  </span>
-                  <span className="flex items-center gap-1 text-neutral-400">
-                    <Focus className="size-3 text-violet-400/80" />
-                    <span className="text-neutral-200">
-                      {droneSpec.focalLengthMm} mm
-                    </span>
-                  </span>
-                </div>
+              <div className="flex min-h-11 w-full items-center justify-center gap-1 border-t border-white/[0.08] bg-white/[0.02] px-4 py-2.5 text-sm font-medium text-primary-300/95 group-hover:bg-white/[0.05]">
+                Trocar drone
+                <ChevronRight
+                  className="size-4 shrink-0 opacity-80"
+                  aria-hidden
+                />
               </div>
-            </div>
+            </button>
           </Card>
         </motion.div>
       </AnimatePresence>
 
+      {!polygon ? (
+        <Card className="glass-card border-dashed border-white/15 px-4 py-6 text-center">
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-white/[0.05] ring-1 ring-white/[0.08]">
+            <PenLine className="size-6 text-neutral-500" aria-hidden />
+          </div>
+          <p className="text-sm leading-relaxed text-neutral-400">
+            Desenhe a área de voo no mapa para começar o planejamento.
+          </p>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          <Card className="glass-card space-y-3 p-4">
+            <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-500">
+              Perfil de qualidade
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {FLIGHT_QUALITY_PRESETS.map((preset) => (
+                <Button
+                  key={preset.id}
+                  type="button"
+                  size="sm"
+                  variant={
+                    activeQualityPreset === preset.id ? "primary" : "secondary"
+                  }
+                  className="min-h-11 touch-target text-xs"
+                  onClick={() => applyQualityPreset(preset.id)}
+                >
+                  {preset.label}
+                </Button>
+              ))}
+            </div>
+            {configNotices.length > 0 ? (
+              <ul className="space-y-1.5 rounded-lg border border-white/10 p-2.5 text-[11px] leading-snug">
+                {configNotices.map((n) => (
+                  <li
+                    key={n.text}
+                    className={
+                      n.severity === "error"
+                        ? "flex gap-2 text-red-300/95"
+                        : n.severity === "warning"
+                          ? "flex gap-2 text-amber-200/90"
+                          : "flex gap-2 text-neutral-400"
+                    }
+                  >
+                    {n.severity === "error" ? (
+                      <TriangleAlert
+                        className="mt-0.5 size-3.5 shrink-0"
+                        aria-hidden
+                      />
+                    ) : n.severity === "warning" ? (
+                      <TriangleAlert
+                        className="mt-0.5 size-3.5 shrink-0 text-amber-300/80"
+                        aria-hidden
+                      />
+                    ) : (
+                      <Info
+                        className="mt-0.5 size-3.5 shrink-0 text-neutral-500"
+                        aria-hidden
+                      />
+                    )}
+                    <span>{n.text}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </Card>
+
+          <Card className="glass-card space-y-3 p-4">
+            <Range
+              label="Altitude"
+              value={params.altitudeM}
+              min={30}
+              max={300}
+              step={5}
+              unit="m"
+              onChange={(v) => setParams({ altitudeM: v })}
+            />
+            <p className="text-[11px] text-neutral-400">
+              GSD estimado:{" "}
+              <span className="font-mono text-neutral-200">
+                ~{format.number(estimateGsdCmFromParams(params, droneCatalog), 2)}{" "}
+                cm/px
+              </span>
+              {stats ? (
+                <>
+                  {" "}
+                  <span className="text-neutral-500">(na área:</span>{" "}
+                  <span className="font-mono text-neutral-200">
+                    {format.number(stats.gsdCm, 2)} cm/px
+                  </span>
+                  <span className="text-neutral-500">)</span>
+                </>
+              ) : null}
+            </p>
+          </Card>
+
+          <div>
+            <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-neutral-500">
+              Clima
+            </p>
+            <button
+              type="button"
+              className={cn(
+                "flex w-full min-h-[3.25rem] flex-col gap-1 rounded-xl border px-3 py-2.5 text-left transition-colors",
+                weatherSectionRisk === "danger"
+                  ? "border-red-500/35 bg-red-500/10 hover:bg-red-500/15"
+                  : weatherSectionRisk === "warning"
+                    ? "border-amber-500/35 bg-amber-500/10 hover:bg-amber-500/15"
+                    : "border-primary-500/30 bg-primary-500/10 hover:bg-primary-500/15",
+              )}
+              onClick={() => {
+                setExpandedPlannerTab("weather");
+                setExpandedPlannerOpen(true);
+              }}
+            >
+              {isWeatherLoading ? (
+                <span className="flex items-center gap-2 text-sm text-neutral-400">
+                  <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden />
+                  A carregar clima…
+                </span>
+              ) : currentWeather ? (
+                <>
+                  <span className="flex items-center gap-2 text-sm font-medium text-neutral-100">
+                    <span
+                      className={cn(
+                        "size-2.5 shrink-0 rounded-full",
+                        weatherSectionRisk === "danger"
+                          ? "bg-red-400"
+                          : weatherSectionRisk === "warning"
+                            ? "bg-amber-400"
+                            : "bg-primary-400",
+                      )}
+                      aria-hidden
+                    />
+                    {currentAssessment?.go === false
+                      ? "Condições desfavoráveis"
+                      : currentAssessment?.issues?.length
+                        ? "Atenção às condições"
+                        : "Condições adequadas"}
+                  </span>
+                  <span className="text-xs text-neutral-400">
+                    Vento:{" "}
+                    <span className="font-mono text-neutral-200">
+                      {format.number(currentWeather.windSpeedMs, 1)} m/s
+                    </span>
+                    {" · "}
+                    Temp:{" "}
+                    <span className="font-mono text-neutral-200">
+                      {Math.round(currentWeather.temperatureC)}°C
+                    </span>
+                  </span>
+                </>
+              ) : (
+                <span className="text-sm text-neutral-400">
+                  Toque para ver clima e solar no planejador completo.
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {polygon ? (
+        <div className="sticky bottom-0 z-[2] -mx-4 mt-1 space-y-3 border-t border-white/[0.08] bg-[#171717]/[0.96] px-4 pb-1 pt-3 backdrop-blur-md supports-[backdrop-filter]:bg-[#171717]/90">
+          <>
+            <MissionSummaryBar stats={stats} isCalculating={isCalculating} />
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                className="min-h-11"
+                onClick={() => void saveCurrentPlan()}
+                disabled={!hasPlan || saving}
+              >
+                {saving ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="size-3.5 animate-spin" />
+                    Salvando…
+                  </span>
+                ) : (
+                  "Salvar plano"
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                className="min-h-11"
+                onClick={onRequestKmzDownload}
+                disabled={!hasPlan || kmzExport.status === "generating"}
+              >
+                <Download className="mr-1 size-4" />
+                {kmzExport.status === "generating" ? "Gerando..." : "Baixar KMZ"}
+              </Button>
+              {platform.isNative && platform.isAndroid ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-11"
+                  disabled={!hasPlan || kmzExport.status === "generating"}
+                  onClick={() => setNativeKmzOpen(true)}
+                >
+                  Enviar ao DJI
+                </Button>
+              ) : null}
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              className="min-h-11 w-full gap-2 border-white/10"
+              onClick={() => {
+                setExpandedPlannerTab("mission");
+                setExpandedPlannerOpen(true);
+              }}
+            >
+              <Maximize2 className="size-4 shrink-0" aria-hidden />
+              Abrir planejador completo
+            </Button>
+          </>
+        </div>
+      ) : null}
+
+      <FlightPlannerExpandedModal
+        open={expandedPlannerOpen}
+        onOpenChange={setExpandedPlannerOpen}
+        activeTab={expandedPlannerTab}
+        onTabChange={setExpandedPlannerTab}
+        title={
+          projectName.trim()
+            ? `Planejador — ${projectName.trim()}`
+            : "Planejador"
+        }
+        headerBadge={
+          <FlightQualityScoreBadge
+            params={params}
+            stats={stats}
+            weather={currentWeather}
+            calibration={activeCalibrationSession}
+          />
+        }
+        mission={
+          <>
       <PlannerCollapsibleCard
         title="Inicio da rota"
         startsExpanded
@@ -737,13 +1070,31 @@ export function FlightPlannerConfigPanel({
           </ul>
         ) : null}
 
-        <DroneModelSection
-          params={params}
-          setParams={setParams}
-          models={droneCatalog}
-          isLoading={droneModelsLoading}
-          isError={droneModelsError}
-        />
+        <div className="rounded-lg border border-white/10 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-500">
+                Drone
+              </p>
+              <p className="truncate text-sm font-medium text-neutral-100">
+                {params.droneModel}
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="min-h-11 shrink-0"
+              onClick={() => setDronePickerOpen(true)}
+            >
+              Alterar drone
+            </Button>
+          </div>
+          <p className="mt-2 text-[11px] leading-snug text-neutral-500">
+            O GSD, frustum 3D e estatísticas usam o sensor cadastrado para este
+            modelo. CRUD de modelos custom fica em Config → Frota de drones.
+          </p>
+        </div>
         <Range
           label="Altitude"
           value={params.altitudeM}
@@ -756,7 +1107,7 @@ export function FlightPlannerConfigPanel({
         />
         <div className="rounded-lg border border-white/10 p-3 space-y-2.5">
           <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
+            <div className="min-w-0" id="flight-terrain-following-label">
               <div className="flex items-center gap-2 text-xs text-neutral-200">
                 <Mountain
                   className="size-3.5 shrink-0 text-primary-400/80"
@@ -775,12 +1126,10 @@ export function FlightPlannerConfigPanel({
                   : null}
               </p>
             </div>
-            <input
-              type="checkbox"
-              className="size-4 shrink-0 cursor-pointer rounded border border-white/20 bg-white/[0.04] text-primary-500"
+            <Switch
               checked={terrainFollowing}
-              onChange={(e) => setTerrainFollowing(e.target.checked)}
-              title="Ativar ajuste de altitude ao terreno"
+              onCheckedChange={setTerrainFollowing}
+              aria-labelledby="flight-terrain-following-label"
             />
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -978,13 +1327,6 @@ export function FlightPlannerConfigPanel({
         </p>
       </PlannerCollapsibleCard>
 
-      <FlightQualityScoreBadge
-        params={params}
-        stats={stats}
-        weather={currentWeather}
-        calibration={activeCalibrationSession}
-      />
-
       <PlannerCollapsibleCard
         title="Estatísticas do voo"
         startsExpanded
@@ -1154,6 +1496,10 @@ export function FlightPlannerConfigPanel({
         )}
       </PlannerCollapsibleCard>
 
+          </>
+        }
+        weather={
+          <>
       <PlannerCollapsibleCard
         title="Janela de voo estimada"
         startsExpanded={false}
@@ -1396,6 +1742,10 @@ export function FlightPlannerConfigPanel({
         )}
       </PlannerCollapsibleCard>
 
+          </>
+        }
+        calibration={
+          <>
       <PlannerCollapsibleCard
         title="Voo de calibração"
         startsExpanded={false}
@@ -1477,7 +1827,7 @@ export function FlightPlannerConfigPanel({
             {calibrationSessions.map((s) => (
               <li
                 key={s.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded border border-white/10 bg-black/20 px-2 py-1.5"
+                className="flex min-h-[44px] flex-wrap items-center justify-between gap-2 rounded border border-white/10 bg-black/20 px-2 py-2"
               >
                 <span className="font-mono text-[10px] text-neutral-400">
                   {s.id.slice(0, 8)}…
@@ -1495,7 +1845,7 @@ export function FlightPlannerConfigPanel({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-7 text-[11px] text-primary-300/90"
+                    className="min-h-11 shrink-0 px-3 text-[11px] text-primary-300/90"
                     onClick={() => {
                       setCalibrationSessionId(s.id);
                       toast.message("Sessão selecionada", {
@@ -1510,40 +1860,14 @@ export function FlightPlannerConfigPanel({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-7 w-7 shrink-0 p-0 text-neutral-500 hover:border-red-900/40 hover:bg-red-950/30 hover:text-red-300"
-                    disabled={deletingCalibrationSessionId === s.id}
+                    className="min-h-11 min-w-11 shrink-0 p-0 text-neutral-500 hover:border-red-900/40 hover:bg-red-950/30 hover:text-red-300"
+                    disabled={
+                      deletingCalibrationSessionId === s.id ||
+                      calibrationSessionPendingDeleteId === s.id
+                    }
                     aria-label="Remover sessão do histórico"
                     title="Remover do histórico"
-                    onClick={() => {
-                      if (
-                        !window.confirm(
-                          "Remover esta sessão do histórico? Os dados e fotos associados deixam de estar disponíveis.",
-                        )
-                      ) {
-                        return;
-                      }
-                      void (async () => {
-                        setDeletingCalibrationSessionId(s.id);
-                        try {
-                          await projectsService.deleteCalibrationSession(
-                            projectId,
-                            s.id,
-                          );
-                          if (calibrationSessionId === s.id) {
-                            setCalibrationSessionId(null);
-                            setCalibrationSessionRevision((n) => n + 1);
-                          }
-                          setCalibrationSessions((prev) =>
-                            prev.filter((row) => row.id !== s.id),
-                          );
-                          toast.success("Sessão removida.");
-                        } catch {
-                          toast.error("Não foi possível remover a sessão.");
-                        } finally {
-                          setDeletingCalibrationSessionId(null);
-                        }
-                      })();
-                    }}
+                    onClick={() => setCalibrationSessionPendingDeleteId(s.id)}
                   >
                     {deletingCalibrationSessionId === s.id ? (
                       <Loader2 className="size-3.5 animate-spin" aria-hidden />
@@ -1593,9 +1917,22 @@ export function FlightPlannerConfigPanel({
         </div>
       </PlannerCollapsibleCard>
 
+          </>
+        }
+        exportContent={
+          <>
+      <div className="min-w-0 overflow-x-auto pb-1">
+        <FlightQualityScoreBadge
+          params={params}
+          stats={stats}
+          weather={currentWeather}
+          calibration={activeCalibrationSession}
+        />
+      </div>
       <Card className="glass-card space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <Button
+            className="min-h-11"
             onClick={() => void saveCurrentPlan()}
             disabled={!hasPlan || saving}
           >
@@ -1610,6 +1947,7 @@ export function FlightPlannerConfigPanel({
           </Button>
           <Button
             variant="outline"
+            className="min-h-11"
             onClick={onRequestKmzDownload}
             disabled={!hasPlan || kmzExport.status === "generating"}
           >
@@ -1620,6 +1958,7 @@ export function FlightPlannerConfigPanel({
             <Button
               type="button"
               variant="outline"
+              className="min-h-11"
               disabled={!hasPlan || kmzExport.status === "generating"}
               onClick={() => setNativeKmzOpen(true)}
             >
@@ -1627,10 +1966,10 @@ export function FlightPlannerConfigPanel({
             </Button>
           ) : null}
         </div>
-        <label className="mt-1 flex cursor-pointer items-start gap-2 text-[11px] leading-snug text-neutral-500">
+        <label className="mt-1 flex min-h-11 cursor-pointer items-start gap-3 rounded-lg py-1 text-[11px] leading-snug text-neutral-500">
           <input
             type="checkbox"
-            className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border border-neutral-600"
+            className="mt-1 size-4 shrink-0 cursor-pointer rounded border border-neutral-600"
             checked={skipKmzPreFlight}
             onChange={(e) => {
               const v = e.target.checked;
@@ -1656,6 +1995,9 @@ export function FlightPlannerConfigPanel({
           </p>
         ) : null}
       </Card>
+          </>
+        }
+      />
 
       {platform.isNative && platform.isAndroid ? (
         <KmzTransferNative
@@ -1676,6 +2018,60 @@ export function FlightPlannerConfigPanel({
           setCalibrationSessionRevision((n) => n + 1);
         }}
       />
+
+      <AlertDialog
+        open={calibrationSessionPendingDeleteId !== null}
+        onOpenChange={(open) => {
+          if (!open) setCalibrationSessionPendingDeleteId(null);
+        }}
+      >
+        <AlertDialogPortal>
+          <AlertDialogOverlay />
+          <AlertDialogContent>
+            <AlertDialogTitle>Remover sessão do histórico?</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <span className="block">
+                Os dados e fotos associados deixam de estar disponíveis. Esta
+                ação não pode ser desfeita.
+              </span>
+              {calibrationSessionPendingDeleteId ? (
+                <span className="block font-mono text-[11px] text-neutral-500">
+                  {calibrationSessionPendingDeleteId.slice(0, 8)}…
+                </span>
+              ) : null}
+            </AlertDialogDescription>
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <AlertDialogCancel asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="min-h-11"
+                  disabled={deletingCalibrationSessionId !== null}
+                >
+                  Cancelar
+                </Button>
+              </AlertDialogCancel>
+              <Button
+                type="button"
+                variant="danger"
+                className="min-h-11"
+                disabled={
+                  !calibrationSessionPendingDeleteId ||
+                  deletingCalibrationSessionId !== null
+                }
+                loading={
+                  Boolean(calibrationSessionPendingDeleteId) &&
+                  deletingCalibrationSessionId ===
+                    calibrationSessionPendingDeleteId
+                }
+                onClick={() => void confirmDeleteCalibrationSession()}
+              >
+                Remover
+              </Button>
+            </div>
+          </AlertDialogContent>
+        </AlertDialogPortal>
+      </AlertDialog>
 
       <PreFlightChecklistModal
         key={preFlightKey}
@@ -1743,6 +2139,16 @@ export function FlightPlannerConfigPanel({
         }}
         isGeneratingKmz={kmzExport.status === "generating"}
         isCalibrationKmzGenerating={kmzCalibExport.status === "generating"}
+      />
+
+      <DronePicker
+        open={dronePickerOpen}
+        onOpenChange={setDronePickerOpen}
+        params={params}
+        setParams={setParams}
+        models={droneCatalog}
+        isLoading={droneModelsLoading}
+        isError={droneModelsError}
       />
     </div>
   );

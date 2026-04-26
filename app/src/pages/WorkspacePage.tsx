@@ -18,6 +18,7 @@ import { ResultsMapToolsOverlay } from "@/features/results/components/ResultsMap
 import { ResultsWorkspacePanel } from "@/features/results/components/ResultsWorkspacePanel";
 import { useResultsViewStore } from "@/features/results/stores/useResultsViewStore";
 import { UploadWorkspacePanel } from "@/features/upload/components/UploadWorkspacePanel";
+import { ProcessingQueuePanel } from "@/features/processing-queue/components/ProcessingQueuePanel";
 import { WindIndicatorOverlay } from "@/features/flight-planner/components/WindIndicatorOverlay";
 import { type WorkspacePanelId, parseWorkspacePanel } from "@/constants/routes";
 import { cn } from "@/lib/utils";
@@ -33,6 +34,10 @@ const PANEL_TITLES: Record<
   plan: { title: "Planejador de voo" },
   upload: { title: "Upload de imagens" },
   results: { title: "Resultados e entregas" },
+  queue: {
+    title: "Fila de processamento",
+    subtitle: "Workers Celery, tarefas NodeODM e projetos em fila.",
+  },
   settings: { title: "Configuracoes" },
 };
 
@@ -60,6 +65,14 @@ function renderWorkspacePanel(
     return (
       <FloatingPanel title={title} subtitle="Preferencias e contexto da API.">
         <SettingsForm />
+      </FloatingPanel>
+    );
+  }
+
+  if (panel === "queue") {
+    return (
+      <FloatingPanel title={title} subtitle={subtitle}>
+        <ProcessingQueuePanel />
       </FloatingPanel>
     );
   }
@@ -178,9 +191,12 @@ export function WorkspacePage() {
     ? null
     : (project.flightPlan.plannerData as PersistedFlightPlan);
 
-  const collapsedLabel = project?.name
-    ? `${PANEL_TITLES[panel].title} — ${project.name}`
-    : PANEL_TITLES[panel].title;
+  const collapsedLabel =
+    panel === "queue"
+      ? PANEL_TITLES[panel].title
+      : project?.name
+        ? `${PANEL_TITLES[panel].title} — ${project.name}`
+        : PANEL_TITLES[panel].title;
 
   const showPlanChrome = panel === "plan" && Boolean(projectId);
   const showResultsChrome = panel === "results" && Boolean(projectId);
@@ -188,7 +204,22 @@ export function WorkspacePage() {
 
   // CSS custom property: width of the right panel so overlays can avoid it.
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
-  const rightPanelWidth = rightPanelOpen ? "var(--layout-panel-width, 32rem)" : "0px";
+  const rightPanelWidth = rightPanelOpen
+    ? "var(--layout-panel-width, 32rem)"
+    : "0px";
+
+  // Portais (ex.: planejador expandido) ficam sob `body` e não herdam o `div` do workspace.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--right-panel-width", rightPanelWidth);
+    root.style.setProperty("--left-sidebar-width", "3rem");
+    root.style.setProperty("--topbar-height", "3.5rem");
+    return () => {
+      root.style.removeProperty("--right-panel-width");
+      root.style.removeProperty("--left-sidebar-width");
+      root.style.removeProperty("--topbar-height");
+    };
+  }, [rightPanelWidth]);
 
   const mainPanel = renderWorkspacePanel(panel, {
     projectId,
@@ -200,11 +231,13 @@ export function WorkspacePage() {
   return (
     <div
       className="fixed inset-0 z-0 overflow-hidden bg-[#0f0f0f] text-[#fafafa]"
-      style={{
-        "--right-panel-width": rightPanelWidth,
-        "--left-sidebar-width": "3rem",
-        "--topbar-height": "3.5rem",
-      } as React.CSSProperties}
+      style={
+        {
+          "--right-panel-width": rightPanelWidth,
+          "--left-sidebar-width": "3rem",
+          "--topbar-height": "3.5rem",
+        } as React.CSSProperties
+      }
     >
       <div className="absolute inset-0 z-0">
         {showPlanChrome ? <FlightPlannerCalculationBridge /> : null}
@@ -241,7 +274,7 @@ export function WorkspacePage() {
 
       {showPlanChrome ? (
         <div
-          className="pointer-events-none absolute z-50"
+          className="pointer-events-none absolute z-50 flex min-h-0 max-h-full flex-col overflow-visible"
           style={{
             top: "max(4.5rem, calc(3.5rem + var(--safe-area-top)))",
             left: "max(0.75rem, env(safe-area-inset-left, 0px))",
@@ -307,7 +340,10 @@ export function WorkspacePage() {
       >
         <div
           className={cn(
-            "pointer-events-auto flex h-full w-full min-w-0 min-h-0 flex-col justify-end",
+            // Com painel fechado, nao cobrir o mapa: so filhos com pointer-events-auto
+            // (barra / botao de reabrir) recebem toque; o restante passa ao mapa.
+            rightPanelOpen ? "pointer-events-auto" : "pointer-events-none",
+            "flex h-full w-full min-w-0 min-h-0 flex-col justify-end",
             "lg:ml-auto lg:max-w-lg lg:items-stretch lg:justify-start",
             "landscape:min-h-0",
           )}

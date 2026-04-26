@@ -7,10 +7,13 @@ import { useFlightStore } from '@/features/flight-planner/stores/useFlightStore'
 import { applyPoiAttitudeToWaypoints } from '@/features/flight-planner/utils/poiCalculator'
 import { applyTerrainToWaypoints } from '@/features/flight-planner/utils/terrainFollowingApply'
 
+const ELEVATION_DEBOUNCE_MS = 300
+
 /**
  * Mantem waypoints/strips/estatisticas sincronizados com poligono + parametros
  * mesmo quando o painel de configuracao esta recolhido.
  * Com terrain-following, aplica elevação Mapbox Terrain RGB sobre a rota.
+ * Debounce de 300ms no fetch (O.8) para reduzir rajadas de tiles ao ajustar rota.
  */
 export function FlightPlannerCalculationBridge() {
   const polygon = useFlightStore((s) => s.polygon)
@@ -29,6 +32,9 @@ export function FlightPlannerCalculationBridge() {
   )
 
   const base = useFlightCalculator(polygon, params, routeStartRef, droneCatalog)
+  const baseRef = useRef(base)
+  baseRef.current = base
+
   const localSerial = useRef(0)
 
   useEffect(() => {
@@ -59,25 +65,54 @@ export function FlightPlannerCalculationBridge() {
       return
     }
 
-    const my = ++localSerial.current
     setTerrainLoading(true)
-    const pts = waypoints.map((w) => [w.lat, w.lng] as [number, number])
-    void elevation
-      .getElevations(pts)
-      .then((els) => {
-        if (localSerial.current !== my) return
-        const terr = applyTerrainToWaypoints(waypoints, params.altitudeM, els)
-        setResult(withPoi(terr), stats, strips)
-      })
-      .catch(() => {
-        if (localSerial.current !== my) return
-        const zero = new Array(pts.length).fill(0)
-        const terr = applyTerrainToWaypoints(waypoints, params.altitudeM, zero)
-        setResult(withPoi(terr), stats, strips)
-      })
-      .finally(() => {
-        if (localSerial.current === my) setTerrainLoading(false)
-      })
+    const t = window.setTimeout(() => {
+      const snap = baseRef.current
+      if (!useFlightStore.getState().terrainFollowing) {
+        setTerrainLoading(false)
+        return
+      }
+      if (snap.isCalculating) {
+        setTerrainLoading(false)
+        setResult(
+          withPoi(snap.waypoints),
+          snap.stats,
+          snap.strips,
+        )
+        return
+      }
+      const wps2 = snap.waypoints
+      if (wps2.length === 0) {
+        setTerrainLoading(false)
+        return
+      }
+      const my = ++localSerial.current
+      const pts = wps2.map((w) => [w.lat, w.lng] as [number, number])
+      const altM = useFlightStore.getState().params.altitudeM
+      void elevation
+        .getElevations(pts)
+        .then((els) => {
+          if (localSerial.current !== my) return
+          const terr = applyTerrainToWaypoints(wps2, altM, els)
+          setResult(
+            withPoi(terr),
+            snap.stats,
+            snap.strips,
+          )
+        })
+        .catch(() => {
+          if (localSerial.current !== my) return
+          const zero = new Array(pts.length).fill(0)
+          const terr = applyTerrainToWaypoints(wps2, altM, zero)
+          setResult(withPoi(terr), snap.stats, snap.strips)
+        })
+        .finally(() => {
+          if (localSerial.current === my) setTerrainLoading(false)
+        })
+    }, ELEVATION_DEBOUNCE_MS)
+    return () => {
+      window.clearTimeout(t)
+    }
   }, [base, elevation, params.altitudeM, setResult, setTerrainLoading, terrainFollowing])
 
   return null

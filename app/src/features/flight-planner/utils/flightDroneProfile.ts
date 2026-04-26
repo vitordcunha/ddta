@@ -28,7 +28,8 @@ function batteryHeuristic(name: string, maxSpeedMs: number): number {
   return Math.round(36 + maxSpeedMs * 0.15)
 }
 
-function fromApi(m: ApiDroneModel): FlightDroneProfile {
+/** Perfil de exibição / GSD a partir de um modelo do catálogo API. */
+export function flightProfileFromApiModel(m: ApiDroneModel): FlightDroneProfile {
   return {
     id: m.id,
     name: m.name,
@@ -56,7 +57,7 @@ export function resolveFlightDroneProfile(
     params.droneModelId != null ? list.find((m) => m.id === params.droneModelId) : undefined
   const byName = byId ?? list.find((m) => m.name === params.droneModel)
   if (byName) {
-    return fromApi(byName)
+    return flightProfileFromApiModel(byName)
   }
   const spec = getDroneSpec(params.droneModel)
   const sw = spec.sensorWidthMm

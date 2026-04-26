@@ -16,6 +16,7 @@ export type WorkspacePanelId =
   | "plan"
   | "upload"
   | "results"
+  | "queue"
   | "settings"
 
 const VALID_PANELS = new Set<WorkspacePanelId>([
@@ -23,6 +24,7 @@ const VALID_PANELS = new Set<WorkspacePanelId>([
   "plan",
   "upload",
   "results",
+  "queue",
   "settings",
 ])
 

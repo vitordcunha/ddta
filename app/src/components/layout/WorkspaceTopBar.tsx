@@ -1,18 +1,19 @@
 import { useMemo } from 'react'
-import { ChevronDown } from 'lucide-react'
-import { NavLink, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import {
   type WorkspacePanelId,
   parseWorkspacePanel,
 } from '@/constants/routes'
 import { useProjects } from '@/features/projects/hooks/useProjects'
+import { WorkspaceProjectPicker } from '@/components/layout/WorkspaceProjectPicker'
 
 const NAV: { id: WorkspacePanelId; label: string; needsProject?: boolean }[] = [
   { id: "projects", label: "Projetos" },
   { id: "plan", label: "Planejador", needsProject: true },
   { id: "upload", label: "Upload", needsProject: true },
   { id: "results", label: "Resultados", needsProject: true },
+  { id: "queue", label: "Fila ODM" },
   { id: "settings", label: "Config" },
 ]
 
@@ -25,19 +26,6 @@ export function WorkspaceTopBar() {
     () => projects.map((p) => ({ id: p.id, name: p.name })),
     [projects],
   )
-
-  const setProject = (id: string) => {
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev)
-        if (id) next.set("project", id)
-        else next.delete("project")
-        if (!next.get("panel")) next.set("panel", "projects")
-        return next
-      },
-      { replace: true },
-    )
-  }
 
   const goPanel = (next: WorkspacePanelId) => {
     setSearchParams(
@@ -95,51 +83,22 @@ export function WorkspaceTopBar() {
                   title={
                     needs
                       ? "Selecione um projeto no seletor ao lado"
-                      : item.label
+                      : item.id === "queue"
+                        ? "Fila Celery e tarefas NodeODM"
+                        : item.label
                   }
                 >
                   {item.label}
                 </button>
               )
             })}
-            <NavLink
-              to="/processing-queue"
-              className={({ isActive }) =>
-                cn(
-                  "touch-target shrink-0 rounded-full border px-3 text-sm font-medium transition",
-                  isActive
-                    ? "border-[rgba(62,207,142,0.35)] bg-[#0f0f0f] text-[#fafafa]"
-                    : "border-[#2e2e2e] bg-transparent text-[#b4b4b4] hover:border-[#393939] hover:text-[#fafafa]",
-                )
-              }
-              title="Fila Celery e tarefas NodeODM"
-            >
-              Fila ODM
-            </NavLink>
           </div>
         </div>
 
         <div className="relative flex shrink-0 items-center">
-          <label className="sr-only" htmlFor="workspace-project">
-            Projeto
-          </label>
-          <select
-            id="workspace-project"
-            className="h-11 min-h-11 max-w-[11rem] cursor-pointer appearance-none rounded-full border border-[#2e2e2e] bg-[#0f0f0f] pl-3 pr-8 text-left text-sm text-[#fafafa] outline-none transition focus-visible:border-[rgba(62,207,142,0.4)] sm:max-w-[16rem] md:max-w-xs"
-            value={projectId ?? ""}
-            onChange={(e) => setProject(e.target.value)}
-            aria-label="Projeto ativo"
-          >
-            <option value="">Projeto: todos</option>
-            {projectOptions.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-          <ChevronDown
-            className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-[#898989]"
-            aria-hidden
+          <WorkspaceProjectPicker
+            projects={projectOptions}
+            projectId={projectId}
           />
         </div>
       </div>

@@ -426,9 +426,17 @@ export const projectsService = {
     }
   },
 
-  async getSparseCloudGeoJson(id: string): Promise<GeoJSON.GeoJsonObject> {
+  async getSparseCloudGeoJson(
+    id: string,
+    options?: { maxPoints?: number },
+  ): Promise<GeoJSON.GeoJsonObject> {
+    const q = new URLSearchParams();
+    if (options?.maxPoints != null) {
+      q.set("max_points", String(options.maxPoints));
+    }
+    const suffix = q.toString() ? `?${q.toString()}` : "";
     const { data } = await http.get<GeoJSON.GeoJsonObject>(
-      `/projects/${id}/sparse-cloud`,
+      `/projects/${id}/sparse-cloud${suffix}`,
       { timeout: 120_000 },
     );
     return data;

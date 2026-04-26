@@ -6,7 +6,7 @@ import { useMapEngine } from '@/features/map-engine/useMapEngine'
  * (troca de provedor, foco externo, etc.).
  */
 export function useGoogleMapsSync(map: google.maps.Map | null) {
-  const { center, zoom, setCenterZoom } = useMapEngine()
+  const { center, zoom, setCenterZoom, deviceTier } = useMapEngine()
   const applyingFromContext = useRef(false)
 
   useEffect(() => {
@@ -34,11 +34,18 @@ export function useGoogleMapsSync(map: google.maps.Map | null) {
     const sameLng = Math.abs(mc.lng() - center[1]) < 1e-7
     if (sameLat && sameLng && z === zoom) return
     applyingFromContext.current = true
-    map.setCenter({ lat: center[0], lng: center[1] })
+    if (deviceTier === 'high') {
+      map.panTo({ lat: center[0], lng: center[1] })
+    } else {
+      map.setCenter({ lat: center[0], lng: center[1] })
+    }
     map.setZoom(zoom)
-    const t = window.setTimeout(() => {
-      applyingFromContext.current = false
-    }, 80)
+    const t = window.setTimeout(
+      () => {
+        applyingFromContext.current = false
+      },
+      deviceTier === 'high' ? 500 : 80,
+    )
     return () => window.clearTimeout(t)
-  }, [center, zoom, map])
+  }, [center, zoom, map, deviceTier])
 }

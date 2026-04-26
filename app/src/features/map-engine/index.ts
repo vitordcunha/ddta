@@ -3,5 +3,3 @@ export { MapEngineProvider, MapEngineContext } from '@/features/map-engine/MapEn
 export type { MapEngineContextValue } from '@/features/map-engine/MapEngineContext'
 export { useMapEngine } from '@/features/map-engine/useMapEngine'
 export { LeafletMapView } from '@/features/map-engine/providers/leaflet/LeafletMapView'
-export { MapboxMapView } from '@/features/map-engine/providers/mapbox/MapboxMapView'
-export { GoogleMapsView } from '@/features/map-engine/providers/google/GoogleMapsView'

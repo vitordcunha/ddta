@@ -132,6 +132,7 @@ function PlanMissionWaypointMarkers({
   const setSelectedWaypoint = useFlightStore((s) => s.setSelectedWaypoint);
   const { mapboxToken } = useMapEngine();
   const dragTerrainSerial = useRef(0);
+  const dragElevationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const onDragEnd = useCallback(
     (id: string) => (e: L.LeafletEvent) => {
@@ -148,32 +149,39 @@ function PlanMissionWaypointMarkers({
 
       if (!state.terrainFollowing) return;
 
+      if (dragElevationTimer.current) {
+        clearTimeout(dragElevationTimer.current);
+        dragElevationTimer.current = null;
+      }
       const serial = ++dragTerrainSerial.current;
       const svc = createMapboxElevationService(mapboxToken);
-      const pts = useFlightStore
-        .getState()
-        .waypoints.map((w) => [w.lat, w.lng] as [number, number]);
-      void svc
-        .getElevations(pts)
-        .then((els) => {
-          if (dragTerrainSerial.current !== serial) return;
-          const s2 = useFlightStore.getState();
-          s2.setResult(
-            applyTerrainToWaypoints(s2.waypoints, s2.params.altitudeM, els),
-            s2.stats,
-            s2.strips,
-          );
-        })
-        .catch(() => {
-          if (dragTerrainSerial.current !== serial) return;
-          const s2 = useFlightStore.getState();
-          const zero = new Array(s2.waypoints.length).fill(0);
-          s2.setResult(
-            applyTerrainToWaypoints(s2.waypoints, s2.params.altitudeM, zero),
-            s2.stats,
-            s2.strips,
-          );
-        });
+      dragElevationTimer.current = setTimeout(() => {
+        dragElevationTimer.current = null;
+        const pts = useFlightStore
+          .getState()
+          .waypoints.map((w) => [w.lat, w.lng] as [number, number]);
+        void svc
+          .getElevations(pts)
+          .then((els) => {
+            if (dragTerrainSerial.current !== serial) return;
+            const s2 = useFlightStore.getState();
+            s2.setResult(
+              applyTerrainToWaypoints(s2.waypoints, s2.params.altitudeM, els),
+              s2.stats,
+              s2.strips,
+            );
+          })
+          .catch(() => {
+            if (dragTerrainSerial.current !== serial) return;
+            const s2 = useFlightStore.getState();
+            const zero = new Array(s2.waypoints.length).fill(0);
+            s2.setResult(
+              applyTerrainToWaypoints(s2.waypoints, s2.params.altitudeM, zero),
+              s2.stats,
+              s2.strips,
+            );
+          });
+      }, 300);
     },
     [mapboxToken],
   );

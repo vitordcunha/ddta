@@ -46,23 +46,34 @@ export function WaypointEditorPanel() {
   )
 
   const terrainRefreshRef = useRef(0)
-  const refreshTerrainIfNeeded = useCallback(async () => {
+  const terrainDebounceT = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const refreshTerrainIfNeeded = useCallback(() => {
     if (!useFlightStore.getState().terrainFollowing) return
-    const serial = ++terrainRefreshRef.current
-    const svc = createMapboxElevationService(mapboxToken)
-    const pts = useFlightStore.getState().waypoints.map((w) => [w.lat, w.lng] as [number, number])
-    if (pts.length === 0) return
-    try {
-      const els = await svc.getElevations(pts)
-      if (terrainRefreshRef.current !== serial) return
-      const { waypoints: wps, stats: st, strips: stp, params: p } = useFlightStore.getState()
-      setResult(applyTerrainToWaypoints(wps, p.altitudeM, els), st, stp)
-    } catch {
-      if (terrainRefreshRef.current !== serial) return
-      const { waypoints: wps, stats: st, strips: stp, params: p } = useFlightStore.getState()
-      const zero = new Array(wps.length).fill(0)
-      setResult(applyTerrainToWaypoints(wps, p.altitudeM, zero), st, stp)
+    if (terrainDebounceT.current) {
+      clearTimeout(terrainDebounceT.current)
+      terrainDebounceT.current = null
     }
+    terrainDebounceT.current = setTimeout(() => {
+      terrainDebounceT.current = null
+      if (!useFlightStore.getState().terrainFollowing) return
+      const serial = ++terrainRefreshRef.current
+      const svc = createMapboxElevationService(mapboxToken)
+      const pts = useFlightStore.getState().waypoints.map((w) => [w.lat, w.lng] as [number, number])
+      if (pts.length === 0) return
+      void (async () => {
+        try {
+          const els = await svc.getElevations(pts)
+          if (terrainRefreshRef.current !== serial) return
+          const { waypoints: wps, stats: st, strips: stp, params: p } = useFlightStore.getState()
+          setResult(applyTerrainToWaypoints(wps, p.altitudeM, els), st, stp)
+        } catch {
+          if (terrainRefreshRef.current !== serial) return
+          const { waypoints: wps, stats: st, strips: stp, params: p } = useFlightStore.getState()
+          const zero = new Array(wps.length).fill(0)
+          setResult(applyTerrainToWaypoints(wps, p.altitudeM, zero), st, stp)
+        }
+      })()
+    }, 300)
   }, [mapboxToken, setResult])
 
   if (!selectedId || !wp) return null

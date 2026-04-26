@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardBody, CardHeader, Button } from "@/components/ui";
 import {
   DEFAULT_USER_PREFERENCES,
   USER_PREFERENCES_STORAGE_KEY,
+  USER_PREFERENCES_UPDATED_EVENT,
   type UserPreferences,
 } from "@/constants/userPreferences";
 import { useAppContext } from "@/hooks/useAppContext";
@@ -14,8 +16,11 @@ import {
   fetchMapApiKeys,
   updateMapApiKeys,
 } from "@/services/mapApiKeysService";
+import { useDroneModelsQuery } from "@/features/flight-planner/hooks/useDroneModelsQuery";
+import { DroneModelManager } from "@/features/flight-planner/components/DroneModelManager";
 
 export function SettingsForm() {
+  const location = useLocation();
   const { workspaceId, setWorkspaceId } = useAppContext();
   const { refreshMapApiKeys } = useMapEngine();
   const [preferences, setPreferences] = useLocalStorage<UserPreferences>(
@@ -28,6 +33,21 @@ export function SettingsForm() {
   const [mapboxApiKey, setMapboxApiKey] = useState("");
   const [googleMapsApiKey, setGoogleMapsApiKey] = useState("");
   const [mapKeysSaving, setMapKeysSaving] = useState(false);
+  const {
+    data: droneModels,
+    isLoading: droneModelsLoading,
+    isError: droneModelsError,
+  } = useDroneModelsQuery();
+
+  useEffect(() => {
+    if (location.hash !== "#fleet-drones") return;
+    const id = window.setTimeout(() => {
+      document
+        .getElementById("fleet-drones")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+    return () => window.clearTimeout(id);
+  }, [location.hash, location.pathname, location.search]);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,6 +71,11 @@ export function SettingsForm() {
   const sanitizedWorkspaceId = useMemo(
     () => workspaceId.trim() || "default",
     [workspaceId],
+  );
+
+  const prefs = useMemo(
+    () => ({ ...DEFAULT_USER_PREFERENCES, ...preferences }),
+    [preferences],
   );
 
   const handleWorkspaceBlur = () => {
@@ -120,21 +145,21 @@ export function SettingsForm() {
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
-                variant={preferences.theme === "system" ? "primary" : "outline"}
+                variant={prefs.theme === "system" ? "primary" : "outline"}
                 onClick={() => updatePreferences("theme", "system")}
               >
                 Sistema
               </Button>
               <Button
                 type="button"
-                variant={preferences.theme === "dark" ? "primary" : "outline"}
+                variant={prefs.theme === "dark" ? "primary" : "outline"}
                 onClick={() => updatePreferences("theme", "dark")}
               >
                 Escuro
               </Button>
               <Button
                 type="button"
-                variant={preferences.theme === "light" ? "primary" : "outline"}
+                variant={prefs.theme === "light" ? "primary" : "outline"}
                 onClick={() => updatePreferences("theme", "light")}
               >
                 Claro
@@ -150,7 +175,7 @@ export function SettingsForm() {
               <Button
                 type="button"
                 variant={
-                  preferences.distanceUnit === "m" ? "primary" : "outline"
+                  prefs.distanceUnit === "m" ? "primary" : "outline"
                 }
                 onClick={() => updatePreferences("distanceUnit", "m")}
               >
@@ -159,7 +184,7 @@ export function SettingsForm() {
               <Button
                 type="button"
                 variant={
-                  preferences.distanceUnit === "ft" ? "primary" : "outline"
+                  prefs.distanceUnit === "ft" ? "primary" : "outline"
                 }
                 onClick={() => updatePreferences("distanceUnit", "ft")}
               >
@@ -180,7 +205,7 @@ export function SettingsForm() {
                 id="weather-key"
                 className="input-base"
                 type={showWeatherKey ? "text" : "password"}
-                value={preferences.openWeatherApiKey}
+                value={prefs.openWeatherApiKey}
                 onChange={(e) =>
                   updatePreferences("openWeatherApiKey", e.target.value)
                 }
@@ -288,6 +313,70 @@ export function SettingsForm() {
               {mapKeysSaving ? "Salvando…" : "Salvar chaves de mapa"}
             </Button>
           </div>
+        </CardBody>
+      </Card>
+
+      <Card
+        id="fleet-drones"
+        className="scroll-mt-4 border-[#2e2e2e] bg-[#0f0f0f]/40"
+      >
+        <CardHeader>
+          <h2 className="text-base text-[#fafafa]">Frota de drones</h2>
+          <p className="text-sm text-[#898989]">
+            Modelos padrão (somente leitura) e modelos custom usados no
+            planejador de voo e no GSD.
+          </p>
+        </CardHeader>
+        <CardBody className="space-y-3 overscroll-contain">
+          {droneModelsError ? (
+            <p className="text-sm text-amber-400/95">
+              Não foi possível carregar o catálogo da API. Verifique o backend e
+              tente novamente; o planejador ainda pode usar a lista local.
+            </p>
+          ) : droneModelsLoading ? (
+            <p className="text-sm text-[#898989]">Carregando catálogo…</p>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <label
+                  className="block text-sm text-[#b4b4b4]"
+                  htmlFor="default-drone-model"
+                >
+                  Drone padrão no planejador
+                </label>
+                <select
+                  id="default-drone-model"
+                  className="input-base w-full max-w-md"
+                  value={prefs.defaultDroneModelId ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    updatePreferences(
+                      "defaultDroneModelId",
+                      v === "" ? null : v,
+                    );
+                    window.dispatchEvent(
+                      new Event(USER_PREFERENCES_UPDATED_EVENT),
+                    );
+                  }}
+                >
+                  <option value="">
+                    Automático (modelo marcado como padrão no catálogo)
+                  </option>
+                  {(droneModels ?? []).map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                      {m.is_default ? " · padrão API" : ""}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-[#5c5c5c]">
+                  Usado em planos novos e quando o modelo atual não está no
+                  catálogo. Planos já salvos mantêm o drone escolhido no projeto.
+                </p>
+              </div>
+              <DroneModelManager models={droneModels ?? []} />
+            </>
+          )}
         </CardBody>
       </Card>
 

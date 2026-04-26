@@ -1,4 +1,9 @@
 import type { IElevationService } from "@/features/flight-planner/types/elevationService";
+import {
+  idbElevationKeyForPoint,
+  idbGetElevationM,
+  idbSetElevationM,
+} from "@/features/flight-planner/services/elevationIdbCache";
 
 const TERRAIN_TILESET = "mapbox.mapbox-terrain-dem-v1";
 const TERRAIN_ZOOM = 14;
@@ -78,7 +83,7 @@ type TileKey = string;
 type Pending = { index: number; lat: number; lng: number };
 
 /**
- * Elevation a partir de tiles RGB Mapbox, com cache em memória por ponto.
+ * Elevation a partir de tiles RGB Mapbox, com L1 (memória) e L2 (IndexedDB, TTL 7d).
  */
 export class MapboxElevationService implements IElevationService {
   private readonly cache = new Map<string, number>();
@@ -116,16 +121,35 @@ export class MapboxElevationService implements IElevationService {
     if (pending.length === 0) {
       return out;
     }
+
+    const idbResults = await Promise.all(
+      pending.map(async (p) => {
+        const k = idbElevationKeyForPoint(p.lat, p.lng);
+        const m = await idbGetElevationM(k);
+        return { p, m: m as number | undefined };
+      }),
+    );
+    const still: Pending[] = [];
+    for (const { p, m } of idbResults) {
+      if (m !== undefined) {
+        this.cache.set(cacheKeyForPoint(p.lat, p.lng), m);
+        out[p.index] = m;
+      } else {
+        still.push(p);
+      }
+    }
+    if (still.length === 0) {
+      return out;
+    }
+
     const z = TERRAIN_ZOOM;
     const n = 2 ** z;
     const byTile = new Map<TileKey, Pending[]>();
-    for (const p of pending) {
+    for (const p of still) {
       const xFloat = ((p.lng + 180) / 360) * n;
       const latRad = p.lat * DEG2RAD;
       const yFloat =
-        ((1.0 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) /
-          2) *
-        n;
+        ((1.0 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n;
       const tx = Math.floor(xFloat);
       const ty = Math.floor(yFloat);
       const k = `${z}/${tx}/${ty}` as TileKey;
@@ -158,6 +182,7 @@ export class MapboxElevationService implements IElevationService {
         const el = rgbToElevationM(r, g, b);
         this.cache.set(cacheKeyForPoint(j.lat, j.lng), el);
         out[j.index] = el;
+        void idbSetElevationM(idbElevationKeyForPoint(j.lat, j.lng), el);
       }
     }
     return out;

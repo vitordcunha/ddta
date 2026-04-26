@@ -67,6 +67,12 @@ type FlightStore = PersistedFlightPlan & {
   setCalibrationSessionId: (id: string | null) => void
   calibrationMapPreviewActive: boolean
   setCalibrationMapPreviewActive: (active: boolean) => void
+  /**
+   * Campo de visão 3D (frustum) no deck. Default depende de deviceTier (O.7); o usuário pode persistir
+   * em `localStorage` (`flight:map3dFrustum`) via setFrustum3dInDeck.
+   */
+  frustum3dInDeck: boolean
+  setFrustum3dInDeck: (v: boolean) => void
   updateWaypoint: (id: string, patch: Partial<Waypoint>) => void
   /** Copia gimbal e heading do waypoint de origem para todos sem `poiOverride`. */
   copyAttitudeFromWaypointToAll: (sourceId: string) => void
@@ -100,7 +106,8 @@ type FlightStore = PersistedFlightPlan & {
 
 export const initialFlightParams: FlightParams = {
   droneModelId: null,
-  droneModel: 'Mini 4 Pro',
+  /** Resolvido pelo catálogo + preferência de drone padrão em Configurações. */
+  droneModel: '',
   altitudeM: 120,
   forwardOverlap: 80,
   sideOverlap: 70,
@@ -134,6 +141,17 @@ export const useFlightStore = create<FlightStore>((set) => ({
   calibrationMapPreviewActive: false,
   setCalibrationMapPreviewActive: (calibrationMapPreviewActive) =>
     set({ calibrationMapPreviewActive }),
+  frustum3dInDeck: true,
+  setFrustum3dInDeck: (v) => {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('flight:map3dFrustum', v ? '1' : '0')
+      }
+    } catch {
+      /* ignore */
+    }
+    set({ frustum3dInDeck: v })
+  },
   isCalculating: false,
   routeStartRef: null,
   draftPoints: [],
@@ -227,6 +245,7 @@ export const useFlightStore = create<FlightStore>((set) => ({
       draftPoints: [],
       strips: [],
       routeStartRef: null,
+      frustum3dInDeck: true,
     }),
   resetPlan: () =>
     set({

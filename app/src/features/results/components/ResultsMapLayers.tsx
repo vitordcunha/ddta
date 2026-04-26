@@ -12,6 +12,8 @@ import {
 } from "react-leaflet";
 import { sampleContours } from "@/features/results/mocks/completedProject";
 import type { MapBounds } from "@/features/results/stores/useResultsViewStore";
+import { useMapEngine } from "@/features/map-engine/useMapEngine";
+import { getSparseCloudMaxPoints } from "@/features/map-engine/utils/getSparseCloudMaxPoints";
 import { useResultsViewStore } from "@/features/results/stores/useResultsViewStore";
 import { lineStringCoordinates3d } from "@/features/map-engine/layers/RealFlightPathLayer";
 import { projectHasFullOrthophoto } from "@/features/results/utils/orthophotoAssets";
@@ -70,10 +72,16 @@ export function ResultsMapInnerLayers({
       q.state.data?.status === "processing" ? 4000 : false,
   });
 
+  const { deviceTier, mode, provider } = useMapEngine();
+  /** Nuvem esparsa pública neste painel: só 2D Leaflet (Mapbox/3D: sem essa layer aqui ainda). */
+  const use3DCloudCap = (provider === "mapbox" || provider === "google") && mode === "3d";
+  const sparseMax = getSparseCloudMaxPoints(deviceTier, use3DCloudCap);
+
   const sparseUnlocked = Boolean(project?.sparseCloudAvailable);
   const { data: sparseGeoJson } = useQuery({
-    queryKey: ["sparse-cloud", projectId],
-    queryFn: () => projectsService.getSparseCloudGeoJson(projectId!),
+    queryKey: ["sparse-cloud", projectId, sparseMax, use3DCloudCap],
+    queryFn: () =>
+      projectsService.getSparseCloudGeoJson(projectId!, { maxPoints: sparseMax }),
     enabled: Boolean(projectId) && sparseUnlocked,
     staleTime: 60_000,
   });

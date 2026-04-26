@@ -25,7 +25,8 @@ const config: CapacitorConfig = {
     },
     StatusBar: {
       style: 'DARK',
-      backgroundColor: '#0a0a0a',
+      /** Conteúdo sob a status bar onde o plugin suporta; alinhado a `initCapacitorShell`. */
+      overlaysWebView: true,
     },
     Keyboard: {
       resize: 'none',

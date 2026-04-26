@@ -48,13 +48,23 @@ export function UploadWorkspacePanel({ projectId }: UploadWorkspacePanelProps) {
     }
   }
   const completionAnnounced = useRef(false)
+  /** Evita toast ao abrir o painel com imagens já no servidor (todas em "done" sem upload nesta sessão). */
+  const uploadStartedThisSession = useRef(false)
+
+  useEffect(() => {
+    if (isUploading) uploadStartedThisSession.current = true
+  }, [isUploading])
 
   useEffect(() => {
     if (!projectId) {
       resetFiles()
+      completionAnnounced.current = false
+      uploadStartedThisSession.current = false
       return
     }
     resetFiles()
+    completionAnnounced.current = false
+    uploadStartedThisSession.current = false
     let cancelled = false
     void projectsService
       .listProjectImages(projectId)
@@ -86,7 +96,7 @@ export function UploadWorkspacePanel({ projectId }: UploadWorkspacePanelProps) {
   }
 
   useEffect(() => {
-    if (isCompleted && !completionAnnounced.current) {
+    if (isCompleted && !completionAnnounced.current && uploadStartedThisSession.current) {
       completionAnnounced.current = true
       toast.success('Upload concluido: todas as imagens foram enviadas.')
     }

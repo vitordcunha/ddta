@@ -2,37 +2,48 @@ import {
   createContext,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useState,
   type ReactNode,
-} from 'react'
-import { fetchMapApiKeys } from '@/services/mapApiKeysService'
-import type { MapEngineState, MapMode, MapProvider } from '@/features/map-engine/types'
-import { detectDeviceTier, type DeviceTier } from '@/features/map-engine/utils/detectDeviceTier'
+} from "react";
+import { useFlightStore } from "@/features/flight-planner/stores/useFlightStore";
+import { fetchMapApiKeys } from "@/services/mapApiKeysService";
+import type {
+  MapEngineState,
+  MapMode,
+  MapProvider,
+} from "@/features/map-engine/types";
+import {
+  detectDeviceTier,
+  type DeviceTier,
+} from "@/features/map-engine/utils/detectDeviceTier";
 
-const LS_PREFS = 'map-engine:preferences'
+const LS_PREFS = "map-engine:preferences";
 
 type StoredPrefs = {
-  provider?: MapProvider
-  mode?: MapMode
-  center?: [number, number]
-  zoom?: number
-}
+  provider?: MapProvider;
+  mode?: MapMode;
+  center?: [number, number];
+  zoom?: number;
+};
 
-const DEFAULT_CENTER: [number, number] = [-15.793889, -47.882778]
-const DEFAULT_ZOOM = 15
+const DEFAULT_CENTER: [number, number] = [-15.793889, -47.882778];
+const DEFAULT_ZOOM = 15;
 
 function readPrefs(): StoredPrefs {
   try {
-    const raw = localStorage.getItem(LS_PREFS)
-    if (!raw) return {}
-    return JSON.parse(raw) as StoredPrefs
+    const raw = localStorage.getItem(LS_PREFS);
+    if (!raw) return {};
+    return JSON.parse(raw) as StoredPrefs;
   } catch {
-    return {}
+    return {};
   }
 }
 
-function writePrefs(p: Pick<MapEngineState, 'provider' | 'mode' | 'center' | 'zoom'>) {
+function writePrefs(
+  p: Pick<MapEngineState, "provider" | "mode" | "center" | "zoom">,
+) {
   try {
     localStorage.setItem(
       LS_PREFS,
@@ -42,35 +53,48 @@ function writePrefs(p: Pick<MapEngineState, 'provider' | 'mode' | 'center' | 'zo
         center: p.center,
         zoom: p.zoom,
       }),
-    )
+    );
   } catch {
     /* ignore */
   }
 }
 
 export type MapEngineContextValue = MapEngineState & {
-  mapboxToken: string
-  googleMapsApiKey: string
-  deviceTier: DeviceTier
-  setProvider: (provider: MapProvider) => void
-  setMode: (mode: MapMode) => void
-  setCenterZoom: (center: [number, number], zoom: number) => void
-  refreshMapApiKeys: () => Promise<void>
-}
+  mapboxToken: string;
+  googleMapsApiKey: string;
+  deviceTier: DeviceTier;
+  setProvider: (provider: MapProvider) => void;
+  setMode: (mode: MapMode) => void;
+  setCenterZoom: (center: [number, number], zoom: number) => void;
+  refreshMapApiKeys: () => Promise<void>;
+};
 
-export const MapEngineContext = createContext<MapEngineContextValue | null>(null)
+export const MapEngineContext = createContext<MapEngineContextValue | null>(
+  null,
+);
 
 export function MapEngineProvider({ children }: { children: ReactNode }) {
-  const stored = readPrefs()
+  const stored = readPrefs();
   const initialProvider: MapProvider =
-    stored.provider === 'mapbox' || stored.provider === 'google' || stored.provider === 'leaflet'
+    stored.provider === "mapbox" ||
+    stored.provider === "google" ||
+    stored.provider === "leaflet"
       ? stored.provider
-      : 'leaflet'
-  let initialMode: MapMode = stored.mode === '3d' || stored.mode === '2d' ? stored.mode : '2d'
-  if (initialProvider === 'leaflet') initialMode = '2d'
+      : "leaflet";
+  const tierAtBoot = detectDeviceTier();
+  let initialMode: MapMode =
+    stored.mode === "3d" || stored.mode === "2d" ? stored.mode : "2d";
+  if (initialProvider === "leaflet") initialMode = "2d";
+  if (
+    tierAtBoot === "none" &&
+    initialMode === "3d" &&
+    (initialProvider === "mapbox" || initialProvider === "google")
+  ) {
+    initialMode = "2d";
+  }
 
-  const [provider, setProviderState] = useState<MapProvider>(initialProvider)
-  const [mode, setModeState] = useState<MapMode>(initialMode)
+  const [provider, setProviderState] = useState<MapProvider>(initialProvider);
+  const [mode, setModeState] = useState<MapMode>(initialMode);
   const [center, setCenter] = useState<[number, number]>(
     Array.isArray(stored.center) &&
       stored.center.length === 2 &&
@@ -78,59 +102,89 @@ export function MapEngineProvider({ children }: { children: ReactNode }) {
       Number.isFinite(stored.center[1])
       ? [stored.center[0], stored.center[1]]
       : DEFAULT_CENTER,
-  )
+  );
   const [zoom, setZoom] = useState<number>(
-    typeof stored.zoom === 'number' && Number.isFinite(stored.zoom) ? stored.zoom : DEFAULT_ZOOM,
-  )
-  const [mapboxToken, setMapboxToken] = useState('')
-  const [googleMapsApiKey, setGoogleMapsApiKey] = useState('')
+    typeof stored.zoom === "number" && Number.isFinite(stored.zoom)
+      ? stored.zoom
+      : DEFAULT_ZOOM,
+  );
+  const [mapboxToken, setMapboxToken] = useState("");
+  const [googleMapsApiKey, setGoogleMapsApiKey] = useState("");
   // Detectado uma vez no boot; imutável durante a sessão.
-  const [deviceTier] = useState<DeviceTier>(() => detectDeviceTier())
+  const [deviceTier] = useState<DeviceTier>(() => detectDeviceTier());
 
   const loadKeys = useCallback(async () => {
     try {
-      const data = await fetchMapApiKeys()
-      setMapboxToken((data.mapbox_api_key ?? '').trim())
-      setGoogleMapsApiKey((data.google_maps_api_key ?? '').trim())
+      const data = await fetchMapApiKeys();
+      setMapboxToken((data.mapbox_api_key ?? "").trim());
+      setGoogleMapsApiKey((data.google_maps_api_key ?? "").trim());
     } catch {
-      setMapboxToken('')
-      setGoogleMapsApiKey('')
+      setMapboxToken("");
+      setGoogleMapsApiKey("");
     }
-  }, [])
+  }, []);
 
   useEffect(() => {
-    void loadKeys()
-  }, [loadKeys])
+    void loadKeys();
+  }, [loadKeys]);
+
+  useLayoutEffect(() => {
+    try {
+      if (typeof localStorage === "undefined") return;
+      const raw = localStorage.getItem("flight:map3dFrustum");
+      if (raw === "0" || raw === "1") {
+        useFlightStore.getState().setFrustum3dInDeck(raw === "1");
+        return;
+      }
+      const next = deviceTier !== "low";
+      useFlightStore.getState().setFrustum3dInDeck(next);
+    } catch {
+      /* ignore */
+    }
+  }, [deviceTier]);
 
   useEffect(() => {
-    writePrefs({ provider, mode, center, zoom })
-  }, [provider, mode, center, zoom])
+    writePrefs({ provider, mode, center, zoom });
+  }, [provider, mode, center, zoom]);
 
-  const setCenterZoom = useCallback((nextCenter: [number, number], nextZoom: number) => {
-    setCenter(nextCenter)
-    setZoom(nextZoom)
-  }, [])
+  const setCenterZoom = useCallback(
+    (nextCenter: [number, number], nextZoom: number) => {
+      setCenter(nextCenter);
+      setZoom(nextZoom);
+    },
+    [],
+  );
 
   const setProvider = useCallback((next: MapProvider) => {
-    setProviderState(next)
-    if (next === 'leaflet') {
-      setModeState('2d')
+    setProviderState(next);
+    if (next === "leaflet") {
+      setModeState("2d");
     }
-  }, [])
+  }, []);
 
   const setMode = useCallback(
     (next: MapMode) => {
-      if (provider === 'leaflet') return
-      setModeState(next)
+      if (provider === "leaflet") return;
+      setModeState(next);
     },
     [provider],
-  )
+  );
 
   useEffect(() => {
-    if (provider === 'leaflet' && mode !== '2d') {
-      setModeState('2d')
+    if (provider === "leaflet" && mode !== "2d") {
+      setModeState("2d");
     }
-  }, [provider, mode])
+  }, [provider, mode]);
+
+  useEffect(() => {
+    if (
+      deviceTier === "none" &&
+      (provider === "mapbox" || provider === "google") &&
+      mode === "3d"
+    ) {
+      setModeState("2d");
+    }
+  }, [deviceTier, provider, mode]);
 
   const value = useMemo<MapEngineContextValue>(
     () => ({
@@ -159,7 +213,11 @@ export function MapEngineProvider({ children }: { children: ReactNode }) {
       setCenterZoom,
       loadKeys,
     ],
-  )
+  );
 
-  return <MapEngineContext.Provider value={value}>{children}</MapEngineContext.Provider>
+  return (
+    <MapEngineContext.Provider value={value}>
+      {children}
+    </MapEngineContext.Provider>
+  );
 }

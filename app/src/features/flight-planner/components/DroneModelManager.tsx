@@ -1,15 +1,13 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
-import { Button, Card } from '@/components/ui'
+import { Button } from '@/components/ui'
 import { http } from '@/services/http'
 import type { ApiDroneModel, ApiDroneModelCreate } from '@/features/flight-planner/types/droneModelApi'
 import { droneModelsQueryKey } from '@/features/flight-planner/hooks/useDroneModelsQuery'
 import { useQueryClient } from '@tanstack/react-query'
 
 type Props = {
-  open: boolean
-  onClose: () => void
   models: ApiDroneModel[]
 }
 
@@ -27,14 +25,13 @@ const emptyForm: ApiDroneModelCreate = {
   gimbal_pitch_max: 30,
 }
 
-export function DroneModelManager({ open, onClose, models }: Props) {
+/** CRUD de modelos custom; usar em Config (painel com largura total), não no planejador. */
+export function DroneModelManager({ models }: Props) {
   const qc = useQueryClient()
   const [busyId, setBusyId] = useState<string | null>(null)
   const [form, setForm] = useState<ApiDroneModelCreate>(emptyForm)
   const defaults = models.filter((m) => !m.is_custom)
   const customs = models.filter((m) => m.is_custom)
-
-  if (!open) return null
 
   const invalidate = () => void qc.invalidateQueries({ queryKey: droneModelsQueryKey })
 
@@ -83,26 +80,17 @@ export function DroneModelManager({ open, onClose, models }: Props) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4"
-      role="dialog"
-      aria-modal
-      aria-labelledby="drone-model-manager-title"
-    >
-      <Card className="glass-card max-h-[90vh] w-full max-w-lg overflow-y-auto p-4 shadow-xl">
-        <div className="flex items-start justify-between gap-3">
-          <h2 id="drone-model-manager-title" className="text-sm font-semibold text-neutral-100">
-            Gerenciar modelos de drone
-          </h2>
-          <Button type="button" variant="ghost" size="sm" className="shrink-0" onClick={onClose}>
-            Fechar
-          </Button>
-        </div>
+    <div className="space-y-4">
+      <div>
+        <h2 id="drone-model-manager-title" className="text-sm font-semibold text-neutral-100">
+          Gerenciar modelos de drone
+        </h2>
         <p className="mt-1 text-[11px] text-neutral-500">
           Modelos padrão são somente leitura. Crie modelos custom para câmeras ou drones não listados.
         </p>
+      </div>
 
-        <section className="mt-4 space-y-2">
+        <section className="space-y-2">
           <h3 className="text-xs font-medium text-neutral-300">Modelos padrão</h3>
           <ul className="space-y-1.5 text-[11px] text-neutral-400">
             {defaults.map((m) => (
@@ -269,7 +257,6 @@ export function DroneModelManager({ open, onClose, models }: Props) {
             </Button>
           </div>
         </section>
-      </Card>
     </div>
   )
 }

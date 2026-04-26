@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { fetchRainViewerRadarTileUrlTemplate } from '@/components/map/weather/fetchRainViewerRadarTemplate'
 import { isOwmWeatherMapLayer, owmMapTileSlug } from '@/components/map/weather/mapWeatherTypes'
 import type { WorkspaceMapWeatherTilesProps } from '@/components/map/useWorkspaceMapWeather'
@@ -173,6 +173,7 @@ export function GoogleMapsLayers({
       data.addGeoJson({ type: 'FeatureCollection', features: [poiPoint] })
     }
   }, [
+    map,
     polygon,
     draftLine,
     routeLine,
@@ -187,12 +188,16 @@ export function GoogleMapsLayers({
   const [radarUrl, setRadarUrl] = useState<string | null>(null)
   const [radarFrameKey, setRadarFrameKey] = useState(0)
   const onRadarStatusRef = useRef(onRadarStatus)
-  onRadarStatusRef.current = onRadarStatus
+  useLayoutEffect(() => {
+    onRadarStatusRef.current = onRadarStatus
+  }, [onRadarStatus])
 
   useEffect(() => {
     if (layerId !== 'radar') {
-      setRadarUrl(null)
-      onRadarStatusRef.current?.('idle')
+      queueMicrotask(() => {
+        setRadarUrl(null)
+        onRadarStatusRef.current?.('idle')
+      })
       return
     }
     let cancelled = false

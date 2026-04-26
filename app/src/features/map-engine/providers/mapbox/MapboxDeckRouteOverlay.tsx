@@ -39,6 +39,7 @@ export function MapboxDeckRouteOverlay({
   const poi = useFlightStore((s) => s.poi)
   const selectedWaypointId = useFlightStore((s) => s.selectedWaypointId)
   const setSelectedWaypoint = useFlightStore((s) => s.setSelectedWaypoint)
+  const frustum3dInDeck = useFlightStore((s) => s.frustum3dInDeck)
   const frustumWaypoint = useMemo(() => {
     if (!selectedWaypointId) return null
     return waypoints.find((w) => w.id === selectedWaypointId) ?? null
@@ -58,6 +59,7 @@ export function MapboxDeckRouteOverlay({
     deckPlanGeometry,
     selectedWaypointId,
     deviceTier,
+    showFrustum3d: frustum3dInDeck,
     droneCamera,
   })
 

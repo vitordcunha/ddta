@@ -34,7 +34,7 @@ export function MapboxMapView({ panel, projectId, weatherTiles }: MapboxMapViewP
   const showResults = panel === 'results' && Boolean(projectId)
   const showPlanOrResults = showPlan || showResults
   const { locate } = useGeolocation()
-  const { mapboxToken, mode, center, zoom, setCenterZoom } = useMapEngine()
+  const { mapboxToken, mode, center, zoom, setCenterZoom, deviceTier } = useMapEngine()
   const deckVis = useFlightStore((s) =>
     panel === 'results' ? s.deckMapVisibility.results : s.deckMapVisibility.plan,
   )
@@ -55,13 +55,14 @@ export function MapboxMapView({ panel, projectId, weatherTiles }: MapboxMapViewP
   useEffect(() => {
     const map = mapRef.current?.getMap()
     if (!map) return
+    const duration = deviceTier === 'high' ? 400 : 0
     map.easeTo({
       pitch: mode === '3d' ? 45 : 0,
       bearing: 0,
-      duration: 400,
+      duration,
       essential: true,
     })
-  }, [mode])
+  }, [mode, deviceTier])
 
   const onLoad = useCallback((e: { target: MapboxMap }) => {
     setMapInstance(e.target)
@@ -127,7 +128,7 @@ export function MapboxMapView({ panel, projectId, weatherTiles }: MapboxMapViewP
         style={{ width: '100%', height: '100%' }}
         attributionControl
       >
-        <MapboxLayers map={mapInstance} mode={mode} />
+        <MapboxLayers map={mapInstance} mode={mode} deviceTier={deviceTier} />
         <MapboxWeatherOverlays
           overlay={weatherTiles.overlay}
           openWeatherApiKey={weatherTiles.openWeatherApiKey}
