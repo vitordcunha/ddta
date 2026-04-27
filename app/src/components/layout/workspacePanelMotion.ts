@@ -65,3 +65,13 @@ export const mobileCollapsedBarSlide: Variants = {
   exit: (reduced: boolean) =>
     reduced ? { opacity: 0 } : { y: 10, opacity: 0 },
 };
+
+/** Painel lateral direito no mobile (substitui o bottom sheet). */
+export const mobileSidePanelSlide: Variants = {
+  initial: (reduced: boolean) =>
+    reduced ? { opacity: 0 } : { x: "105%", opacity: 1 },
+  animate: (reduced: boolean) =>
+    reduced ? { opacity: 1 } : { x: 0, opacity: 1 },
+  exit: (reduced: boolean) =>
+    reduced ? { opacity: 0 } : { x: "105%", opacity: 1 },
+};

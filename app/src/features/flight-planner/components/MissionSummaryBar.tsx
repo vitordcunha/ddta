@@ -1,6 +1,7 @@
 import { Battery, Camera, Clock, Focus, Maximize2, Ruler } from "lucide-react";
 import { motion } from "framer-motion";
 import type { FlightStats } from "@/features/flight-planner/types";
+import { useAnimatedNumber } from "@/hooks/useAnimatedNumber";
 
 type MissionSummaryBarProps = {
   stats: FlightStats | null;
@@ -25,15 +26,38 @@ const STAT_ITEMS = [
   { key: "distance", label: "Distância", icon: Ruler, color: "text-neutral-400" },
 ] as const;
 
-function getStatValue(stats: FlightStats, key: typeof STAT_ITEMS[number]["key"]): string {
+function getStatRawValue(stats: FlightStats, key: typeof STAT_ITEMS[number]["key"]): number {
   switch (key) {
-    case "area": return `${stats.areaHa.toFixed(1).replace(".", ",")} ha`;
-    case "photos": return String(stats.estimatedPhotos);
-    case "time": return `${Math.round(stats.estimatedTimeMin)} min`;
-    case "batteries": return `${stats.batteryCount} bat.`;
-    case "gsd": return `${stats.gsdCm.toFixed(2).replace(".", ",")} cm/px`;
-    case "distance": return `${stats.distanceKm.toFixed(2).replace(".", ",")} km`;
+    case "area":      return stats.areaHa;
+    case "photos":    return stats.estimatedPhotos;
+    case "time":      return stats.estimatedTimeMin;
+    case "batteries": return stats.batteryCount;
+    case "gsd":       return stats.gsdCm;
+    case "distance":  return stats.distanceKm;
   }
+}
+
+function formatStatValue(value: number, key: typeof STAT_ITEMS[number]["key"]): string {
+  switch (key) {
+    case "area":      return `${value.toFixed(1).replace(".", ",")} ha`;
+    case "photos":    return String(Math.round(value));
+    case "time":      return `${Math.round(value)} min`;
+    case "batteries": return `${Math.round(value)} bat.`;
+    case "gsd":       return `${value.toFixed(2).replace(".", ",")} cm/px`;
+    case "distance":  return `${value.toFixed(2).replace(".", ",")} km`;
+  }
+}
+
+function AnimatedStatValue({
+  stats,
+  statKey,
+}: {
+  stats: FlightStats;
+  statKey: typeof STAT_ITEMS[number]["key"];
+}) {
+  const raw = getStatRawValue(stats, statKey);
+  const animated = useAnimatedNumber(raw);
+  return <>{formatStatValue(animated, statKey)}</>;
 }
 
 export function MissionSummaryBar({ stats, isCalculating }: MissionSummaryBarProps) {
@@ -68,14 +92,9 @@ export function MissionSummaryBar({ stats, isCalculating }: MissionSummaryBarPro
               <Icon className={`size-3 ${item.color}`} aria-hidden />
               {item.label}
             </p>
-            <motion.p
-              key={`${item.key}-${stats ? getStatValue(stats, item.key) : ""}`}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="text-sm font-semibold tabular-nums text-neutral-100"
-            >
-              {stats ? getStatValue(stats, item.key) : "—"}
-            </motion.p>
+            <p className="text-sm font-semibold tabular-nums text-neutral-100">
+              {stats ? <AnimatedStatValue stats={stats} statKey={item.key} /> : "—"}
+            </p>
           </div>
         );
       })}

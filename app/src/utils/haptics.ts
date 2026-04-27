@@ -8,5 +8,6 @@ export const haptic = {
   medium: () => isNative && Haptics.impact({ style: ImpactStyle.Medium }),
   heavy: () => isNative && Haptics.impact({ style: ImpactStyle.Heavy }),
   success: () => isNative && Haptics.notification({ type: NotificationType.Success }),
+  warning: () => isNative && Haptics.notification({ type: NotificationType.Warning }),
   error: () => isNative && Haptics.notification({ type: NotificationType.Error }),
 }

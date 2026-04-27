@@ -10,6 +10,7 @@ import React, {
 } from "react";
 import { useSearchParams } from "react-router-dom";
 import { FloatingPanel } from "@/components/ui/FloatingPanel";
+import { FlightConfigSkeleton } from "@/components/ui/Skeleton";
 import { WorkspaceMapView } from "@/components/map/WorkspaceMapView";
 import { useWorkspaceMapWeather } from "@/components/map/useWorkspaceMapWeather";
 import { useWeatherMapLayerZoomClamp } from "@/components/map/useWeatherMapLayerZoomClamp";
@@ -602,13 +603,7 @@ export function WorkspacePage() {
             onOpenChange={onRightPanelOpenChange}
             transitionPending={isRightPanelTransitionPending}
           >
-            <Suspense
-              fallback={
-                <div className="flex items-center justify-center p-8">
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
-                </div>
-              }
-            >
+            <Suspense fallback={<FlightConfigSkeleton />}>
               {mainPanel}
             </Suspense>
           </WorkspaceLayoutPanel>

@@ -5,25 +5,24 @@ import {
   useReducer,
   useRef,
 } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
-  ChevronDown,
-  ChevronUp,
-  PanelRightClose,
-  PanelRightOpen,
-} from "lucide-react";
+  AnimatePresence,
+  motion,
+  useDragControls,
+  useReducedMotion,
+} from "framer-motion";
+import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useIsDesktop } from "@/hooks/useBreakpoint";
 import {
-  layoutMobileHeaderClass,
-  layoutMobileSheetShellClass,
   layoutPanelFabClass,
+  maybeBackdropBlur,
   useDeviceTier,
 } from "@/lib/deviceUtils";
 import { cn } from "@/lib/utils";
 import {
+  desktopFabSlide,
   desktopPanelSlide,
-  mobileCollapsedBarSlide,
-  mobileSheetSlide,
+  mobileSidePanelSlide,
   workspacePanelFabTransition,
   workspacePanelTransition,
 } from "./workspacePanelMotion";
@@ -52,7 +51,7 @@ const initialPanelState: PanelState = { show: true, layoutHold: false };
 
 type WorkspaceLayoutPanelProps = {
   children: ReactNode;
-  /** Barra recolhida (mobile) */
+  /** Rótulo exibido no botão de reabrir (colapsado). */
   collapsedLabel: string;
   /** Notifica o layout pai (ex.: largura do mapa, pointer-events da camada). */
   onOpenChange?: (open: boolean) => void;
@@ -61,12 +60,11 @@ type WorkspaceLayoutPanelProps = {
 };
 
 /**
- * Mobile/tablet: painel no fundo, bottom sheet, recolher.
- * Desktop (min-width 1280px): coluna à direita com aba de recolher.
+ * Mobile/tablet: painel lateral direito fixo (altura total) com handle à esquerda.
+ * Arraste o handle para a direita para fechar; toque no handle para fechar.
+ * Colapsado: FAB fixo no canto direito.
  *
- * Desktop: `children` permanece montado ao recolher (evita remontar o planejador) e o slide
- * usa só transform (sem animar `max-width` em paralelo). Mobile mantém AnimatePresence
- * porque o sheet é in-flow com altura máxima.
+ * Desktop (min-width 1280px): coluna à direita com aba de toggle.
  */
 export function WorkspaceLayoutPanel({
   children,
@@ -80,6 +78,7 @@ export function WorkspaceLayoutPanel({
   const reduced = Boolean(prefersReducedMotion);
   const panelTransition = workspacePanelTransition(prefersReducedMotion);
   const fabTransition = workspacePanelFabTransition(prefersReducedMotion);
+  const dragControls = useDragControls();
 
   const [state, dispatch] = useReducer(panelReducer, initialPanelState);
   const { show, layoutHold } = state;
@@ -113,6 +112,16 @@ export function WorkspaceLayoutPanel({
     dispatch({ type: "open" });
   }, [show, onOpenChange]);
 
+  const handleMobileDragEnd = useCallback(
+    (_: unknown, info: { offset: { x: number }; velocity: { x: number } }) => {
+      if (info.offset.x > 80 || info.velocity.x > 400) {
+        dispatch({ type: "closeStart" });
+      }
+    },
+    [],
+  );
+
+  // ── Desktop ───────────────────────────────────────────────────────────────
   if (isDesktop) {
     return (
       <div
@@ -128,7 +137,6 @@ export function WorkspaceLayoutPanel({
           layoutOpen ? (e) => e.stopPropagation() : undefined
         }
       >
-        {/* Sempre o mesmo ponto (meio-direita); o painel fica inserido vía padding do WorkspacePage. */}
         <button
           type="button"
           onClick={onToggle}
@@ -153,9 +161,7 @@ export function WorkspaceLayoutPanel({
           custom={reduced}
           transition={panelTransition}
           onAnimationComplete={onDesktopSlideAnimationComplete}
-          style={{
-            pointerEvents: show && layoutOpen ? "auto" : "none",
-          }}
+          style={{ pointerEvents: show && layoutOpen ? "auto" : "none" }}
         >
           <div className="panel-container min-h-0 w-full min-w-0 flex-1 overflow-x-hidden [overscroll-behavior:contain]">
             {children}
@@ -165,73 +171,90 @@ export function WorkspaceLayoutPanel({
     );
   }
 
+  // ── Mobile / tablet ───────────────────────────────────────────────────────
   return (
-    <div
-      className={cn(
-        "w-full min-w-0 [overscroll-behavior:contain]",
-        transitionPending &&
-          "opacity-90 transition-opacity duration-150 motion-reduce:transition-none",
-      )}
-      style={{
-        paddingLeft: "max(0.5rem, env(safe-area-inset-left, 0px))",
-        paddingRight: "max(0.5rem, env(safe-area-inset-right, 0px))",
-        paddingBottom: "max(0.5rem, env(safe-area-inset-bottom, 0px))",
-      }}
-    >
-      {/*
-        Mobile mantém AnimatePresence: sheet in-flow + altura máxima; “sempre montado”
-        quebraria o layout da coluna inferior.
-      */}
-      <AnimatePresence mode="wait" onExitComplete={onMobileExitComplete}>
-        {show ? (
+    <>
+      {/* FAB colapsado — fixo no canto direito, visível só quando painel fechado */}
+      <AnimatePresence>
+        {!show && !layoutHold && (
+          <motion.button
+            key="workspace-mobile-fab"
+            type="button"
+            onClick={onToggle}
+            className={layoutPanelFabClass(deviceTier)}
+            title={collapsedLabel}
+            variants={desktopFabSlide}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            custom={reduced}
+            transition={fabTransition}
+          >
+            <PanelRightOpen className="size-5 shrink-0" />
+          </motion.button>
+        )}
+      </AnimatePresence>
+
+      {/* Painel lateral direito — fixo, altura total, handle à esquerda */}
+      <AnimatePresence onExitComplete={onMobileExitComplete}>
+        {show && (
           <motion.div
-            key="workspace-mobile-sheet"
+            key="workspace-mobile-side-panel"
             role="region"
             aria-label="Painel do workspace"
-            className={layoutMobileSheetShellClass(deviceTier)}
-            variants={mobileSheetSlide}
+            className={cn(
+              "panel-animated pointer-events-auto fixed z-50 flex flex-row overflow-hidden",
+              "border-l border-white/10 shadow-[-6px_0_32px_rgba(0,0,0,0.5)]",
+              deviceTier === "high"
+                ? `bg-[rgba(18,18,20,0.92)] ${maybeBackdropBlur(deviceTier, "sm")}`
+                : "bg-[rgba(26,26,26,0.97)]",
+            )}
+            style={{
+              top: "max(3.5rem, calc(3.5rem + env(safe-area-inset-top, 0px)))",
+              bottom: "env(safe-area-inset-bottom, 0px)",
+              right: "env(safe-area-inset-right, 0px)",
+              width: "min(88vw, 360px)",
+            }}
+            drag="x"
+            dragControls={dragControls}
+            dragListener={false}
+            dragConstraints={{ left: 0, right: 0 }}
+            dragElastic={{ left: 0, right: 0.3 }}
+            onDragEnd={handleMobileDragEnd}
+            variants={mobileSidePanelSlide}
             initial="initial"
             animate="animate"
             exit="exit"
             custom={reduced}
             transition={panelTransition}
           >
-            <div className="flex shrink-0 items-center border-b border-white/5 px-1 py-0.5">
-              <button
-                type="button"
-                onClick={onToggle}
-                className="touch-target flex min-h-11 w-full items-center justify-center gap-1 text-xs text-[#8a8a8a] hover:text-[#b4b4b4]"
-                title="Recolher"
-              >
-                <span
-                  className="h-1 w-9 rounded-full bg-[#3a3a3a]"
-                  aria-hidden
-                />
-                <ChevronDown className="size-4" />
-              </button>
-            </div>
-            <div className="panel-container min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain [scrollbar-gutter:stable]">
+            {/* Handle rail — arraste para fechar, toque para fechar */}
+            <button
+              type="button"
+              title="Fechar painel"
+              className="group flex w-6 shrink-0 touch-none cursor-grab items-center justify-center self-stretch border-r border-white/[0.06] active:cursor-grabbing"
+              onPointerDown={(e) => dragControls.start(e)}
+              onClick={onToggle}
+            >
+              <span
+                className="h-12 w-1 rounded-full bg-white/25 transition-all duration-200 motion-safe:animate-[dd-handle-breathe_3s_ease-in-out_infinite] group-active:bg-white/50"
+                aria-hidden
+              />
+            </button>
+
+            {/* Conteúdo do painel */}
+            <div
+              className={cn(
+                "panel-container min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain [scrollbar-gutter:stable]",
+                transitionPending &&
+                  "opacity-90 transition-opacity duration-150 motion-reduce:transition-none",
+              )}
+            >
               {children}
             </div>
           </motion.div>
-        ) : !layoutHold ? (
-          <motion.button
-            key="workspace-mobile-collapsed"
-            type="button"
-            onClick={onToggle}
-            variants={mobileCollapsedBarSlide}
-            initial="initial"
-            animate="animate"
-            exit="exit"
-            custom={reduced}
-            transition={fabTransition}
-            className={layoutMobileHeaderClass(deviceTier)}
-          >
-            <span className="min-w-0 flex-1 truncate">{collapsedLabel}</span>
-            <ChevronUp className="size-5 shrink-0 text-[#3ecf8e]" />
-          </motion.button>
-        ) : null}
+        )}
       </AnimatePresence>
-    </div>
+    </>
   );
 }

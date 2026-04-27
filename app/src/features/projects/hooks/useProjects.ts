@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { haptic } from '@/utils/haptics'
 import { USER_DATA } from '@/lib/queryClient'
 import {
   clearFlightPlanDraft,
@@ -68,6 +69,7 @@ export function useProjects(): UseProjectsReturn {
       void queryClient.invalidateQueries({ queryKey: ['project', id] })
       clearFlightPlanDraft(id)
       clearSessionSkipHydrateFromSavedPlan(id)
+      haptic.success()
       toast.success('Plano de voo salvo no servidor.')
     },
     onError: () => {

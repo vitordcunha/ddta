@@ -1,4 +1,5 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
+import { ProgressRing } from "@/components/ui/ProgressRing";
 import { useQuery } from "@tanstack/react-query";
 import { Boxes, RefreshCw, Trash2 } from "lucide-react";
 import type { ProjectStatus } from "@/types/project";
@@ -128,10 +129,21 @@ export function ResultsWorkspacePanel({
     if (status === "completed")
       return <Badge variant="success">Concluido</Badge>;
     if (status === "processing")
-      return <Badge variant="processing">Processando</Badge>;
+      return (
+        <span className="inline-flex items-center gap-2">
+          <ProgressRing
+            size={20}
+            strokeWidth={2.5}
+            progress={progress > 0 ? progress : undefined}
+          />
+          <span className="text-sm text-[#3ecf8e]">
+            {progress > 0 ? `${Math.round(progress)}%` : "Processando"}
+          </span>
+        </span>
+      );
     if (status === "failed") return <Badge variant="error">Falhou</Badge>;
     return <Badge variant="uploading">Aguardando processamento</Badge>;
-  }, [status]);
+  }, [status, progress]);
 
   return (
     <div className="space-y-3">
@@ -192,6 +204,16 @@ export function ResultsWorkspacePanel({
       {project ? <ResultRunLayersPanel project={project} /> : null}
 
       <Card className="space-y-2 border-[#2e2e2e] bg-[#171717]/80">
+        {status === "processing" && (
+          <div className="flex justify-center py-1">
+            <ProgressRing
+              size={64}
+              strokeWidth={4}
+              progress={progress > 0 ? progress : undefined}
+              label={progress > 0 ? `${Math.round(progress)}%` : undefined}
+            />
+          </div>
+        )}
         <p className="text-sm text-neutral-400">Status do projeto</p>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <h3 className="text-base text-neutral-100">

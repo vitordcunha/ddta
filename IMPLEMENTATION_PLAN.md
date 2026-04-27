@@ -29,23 +29,23 @@ Três decisões arquiteturais que afetam todas as fases:
 ```ts
 export const motion = {
   duration: {
-    instant:  0,
-    micro:    80,
-    fast:     160,
-    base:     240,
-    slow:     380,
-    enter:    480,
-    route:    920,
+    instant: 0,
+    micro: 80,
+    fast: 160,
+    base: 240,
+    slow: 380,
+    enter: 480,
+    route: 920,
   },
   easing: {
-    standard:   'cubic-bezier(0.25, 0.1, 0.25, 1)',
-    decelerate: 'cubic-bezier(0, 0, 0.2, 1)',       // elementos entrando
-    accelerate: 'cubic-bezier(0.4, 0, 1, 1)',        // elementos saindo
-    spring:     { type: 'spring', damping: 38, stiffness: 280 },
-    cinematic:  'cubic-bezier(0.45, 0, 0.55, 1)',    // transições de câmera
-    bounce:     'cubic-bezier(0.22, 1, 0.36, 1)',     // dialogs
+    standard: "cubic-bezier(0.25, 0.1, 0.25, 1)",
+    decelerate: "cubic-bezier(0, 0, 0.2, 1)", // elementos entrando
+    accelerate: "cubic-bezier(0.4, 0, 1, 1)", // elementos saindo
+    spring: { type: "spring", damping: 38, stiffness: 280 },
+    cinematic: "cubic-bezier(0.45, 0, 0.55, 1)", // transições de câmera
+    bounce: "cubic-bezier(0.22, 1, 0.36, 1)", // dialogs
   },
-} as const
+} as const;
 ```
 
 Todos os arquivos com durações hardcoded (`POLYGON_FADE_MS=480`, `ROUTE_DRAW_MS=920`, etc.) são migrados para importar daqui. O `globals.css` usa `@property` para as custom properties de animação.
@@ -57,18 +57,18 @@ Todos os arquivos com durações hardcoded (`POLYGON_FADE_MS=480`, `ROUTE_DRAW_M
 **Arquivo:** `app/src/hooks/useBreakpoint.ts`
 
 ```ts
-type Breakpoint = 'mobile' | 'tablet' | 'desktop'
+type Breakpoint = "mobile" | "tablet" | "desktop";
 
 const BREAKPOINTS = {
-  tablet:  768,
-  desktop: 1280,  // mudança de 1024 → 1280 — iPad Pro landscape fica no tier tablet
-} as const
+  tablet: 768,
+  desktop: 1280, // mudança de 1024 → 1280 — iPad Pro landscape fica no tier tablet
+} as const;
 
-export function useBreakpoint(): Breakpoint
-export function useIsDesktop(): boolean
-export function useIsTablet(): boolean
-export function useIsMobile(): boolean
-export function useIsTouchPrimary(): boolean  // tablet || mobile
+export function useBreakpoint(): Breakpoint;
+export function useIsDesktop(): boolean;
+export function useIsTablet(): boolean;
+export function useIsMobile(): boolean;
+export function useIsTouchPrimary(): boolean; // tablet || mobile
 ```
 
 `WorkspacePage`, `WorkspaceLayoutPanel`, `DialogPanel` e todos os componentes que hoje usam `useMediaQuery('(min-width: 1024px)')` migram para `useBreakpoint()`.
@@ -89,39 +89,39 @@ export function useIsTouchPrimary(): boolean  // tablet || mobile
 // Dados estáticos de sessão (não mudam sem ação do usuário)
 const SESSION_STABLE = {
   staleTime: Infinity,
-  gcTime:    30 * 60_000,   // 30 min em memória
-}
+  gcTime: 30 * 60_000, // 30 min em memória
+};
 
 // Dados de usuário (mudam raramente, via mutações)
 const USER_DATA = {
-  staleTime: 10 * 60_000,   // 10 min
-  gcTime:    60 * 60_000,   // 1h em memória
-}
+  staleTime: 10 * 60_000, // 10 min
+  gcTime: 60 * 60_000, // 1h em memória
+};
 
 // Dados de projeto (mudam via mutações — invalidação explícita)
 const PROJECT_DATA = {
-  staleTime:            5 * 60_000,
-  gcTime:               15 * 60_000,
+  staleTime: 5 * 60_000,
+  gcTime: 15 * 60_000,
   refetchOnWindowFocus: false,
-}
+};
 
 // Status de processamento (controlado pelo SSE stream — não precisa de poll)
 const PROCESSING_STATUS = {
-  staleTime:            Infinity,
-  gcTime:               5 * 60_000,
+  staleTime: Infinity,
+  gcTime: 5 * 60_000,
   refetchOnWindowFocus: false,
-}
+};
 ```
 
 **Mapeamento de queries existentes:**
 
-| Query key | Atual | Novo |
-|---|---|---|
-| `['drone-models']` | 5 min stale | `SESSION_STABLE` — não muda na sessão |
-| `['projects']` | 15s stale | `USER_DATA` — invalidado por mutações |
-| `['project', id]` | 15s stale | `PROJECT_DATA` — invalidado por mutações + SSE |
-| `['map-api-keys']` | padrão (15s) | `SESSION_STABLE` |
-| `['processing-status', id]` | controlado por SSE | `PROCESSING_STATUS` |
+| Query key                   | Atual              | Novo                                           |
+| --------------------------- | ------------------ | ---------------------------------------------- |
+| `['drone-models']`          | 5 min stale        | `SESSION_STABLE` — não muda na sessão          |
+| `['projects']`              | 15s stale          | `USER_DATA` — invalidado por mutações          |
+| `['project', id]`           | 15s stale          | `PROJECT_DATA` — invalidado por mutações + SSE |
+| `['map-api-keys']`          | padrão (15s)       | `SESSION_STABLE`                               |
+| `['processing-status', id]` | controlado por SSE | `PROCESSING_STATUS`                            |
 
 **Prefetch inteligente:** Quando o usuário seleciona um projeto no `WorkspaceProjectPicker`, fazer `queryClient.prefetchQuery(['project', id])` antes de navegar ao painel. Elimina o spinner na primeira visualização.
 
@@ -129,12 +129,12 @@ const PROCESSING_STATUS = {
 // Em WorkspaceProjectPicker — no onSelect:
 onSelect: (projectId) => {
   queryClient.prefetchQuery({
-    queryKey: ['project', projectId],
-    queryFn:  () => projectsService.getProject(projectId),
+    queryKey: ["project", projectId],
+    queryFn: () => projectsService.getProject(projectId),
     staleTime: PROJECT_DATA.staleTime,
-  })
-  setActiveProject(projectId)
-}
+  });
+  setActiveProject(projectId);
+};
 ```
 
 **Invalidação cirúrgica:** As mutações existentes chamam `invalidateQueries(['projects'])`. Migrar para invalidar apenas `['project', id]` quando possível, evitando refetch da lista inteira.
@@ -153,45 +153,45 @@ Este é o arquivo mais crítico do plano. Centraliza a lógica de gestos e resol
 
 ```ts
 type GestureContext =
-  | 'map-idle'            // mapa livre, sem interação ativa
-  | 'draw-polygon'        // usuário desenhando com 1 dedo/pen
-  | 'edit-vertex'         // arrastando vértice
-  | 'edit-polygon-move'   // movendo polígono inteiro
-  | 'pen-freehand'        // stylus em modo freehand
-  | 'panel-scroll'        // painel de config com scroll ativo
+  | "map-idle" // mapa livre, sem interação ativa
+  | "draw-polygon" // usuário desenhando com 1 dedo/pen
+  | "edit-vertex" // arrastando vértice
+  | "edit-polygon-move" // movendo polígono inteiro
+  | "pen-freehand" // stylus em modo freehand
+  | "panel-scroll"; // painel de config com scroll ativo
 
 type GestureHandler = {
-  id:           string
-  priority:     number             // maior = tem precedência
-  context:      GestureContext[]   // contextos em que o handler está ativo
-  fingers:      number | 'any'
-  onActivate:   () => void
-  onDeactivate: () => void
-}
+  id: string;
+  priority: number; // maior = tem precedência
+  context: GestureContext[]; // contextos em que o handler está ativo
+  fingers: number | "any";
+  onActivate: () => void;
+  onDeactivate: () => void;
+};
 
 class GestureManager {
-  private context: GestureContext = 'map-idle'
-  private handlers: Map<string, GestureHandler>
-  private activeHandlerId: string | null = null
+  private context: GestureContext = "map-idle";
+  private handlers: Map<string, GestureHandler>;
+  private activeHandlerId: string | null = null;
 
-  setContext(ctx: GestureContext): void
-  getContext(): GestureContext
-  register(handler: GestureHandler): () => void  // retorna unregister
+  setContext(ctx: GestureContext): void;
+  getContext(): GestureContext;
+  register(handler: GestureHandler): () => void; // retorna unregister
 
   // Chamado por qualquer touchstart com nFingers
-  resolve(nFingers: number): GestureHandler | null
+  resolve(nFingers: number): GestureHandler | null;
 }
 ```
 
 **Tabela de prioridades:**
 
-| Handler | Priority | Context | Fingers |
-|---|---|---|---|
-| Mapbox native pinch-zoom | 0 | map-idle | 2 |
-| 2-finger pan durante draw | 10 | draw-polygon | 2 |
-| Undo/redo | 8 | any | 2–3 |
-| Polygon move | 15 | edit-polygon-move | 2 |
-| Panel swipe dismiss | 5 | map-idle | 2 (vertical) |
+| Handler                   | Priority | Context           | Fingers      |
+| ------------------------- | -------- | ----------------- | ------------ |
+| Mapbox native pinch-zoom  | 0        | map-idle          | 2            |
+| 2-finger pan durante draw | 10       | draw-polygon      | 2            |
+| Undo/redo                 | 8        | any               | 2–3          |
+| Polygon move              | 15       | edit-polygon-move | 2            |
+| Panel swipe dismiss       | 5        | map-idle          | 2 (vertical) |
 
 **Regra anti-conflito fundamental:** Quando `GestureManager.resolve()` retorna um handler com `priority > 0`, chama `disableDrawConflictGestures()` **antes** de ativar o handler. Quando o handler termina, chama `enableDrawConflictGestures()`. O Mapbox nunca recebe os eventos enquanto um handler customizado está ativo.
 
@@ -199,7 +199,7 @@ class GestureManager {
 
 ```ts
 // Adição ao MapEngineContextValue:
-gestureManager: GestureManager
+gestureManager: GestureManager;
 ```
 
 O `GestureManager` é instanciado como singleton no `MapEngineContext` e exposto para os componentes filhos via contexto.
@@ -217,30 +217,36 @@ O `GestureManager` é instanciado como singleton no `MapEngineContext` e exposto
 **Arquivo:** `app/src/lib/haptics.ts` (novo — wrappa o Capacitor existente)
 
 ```ts
-type HapticLevel = 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 'error'
+type HapticLevel =
+  | "light"
+  | "medium"
+  | "heavy"
+  | "success"
+  | "warning"
+  | "error";
 
 export const haptic = {
-  light:   () => triggerHaptic('light'),    // tocar vértice, foco em botão
-  medium:  () => triggerHaptic('medium'),   // snap, inserção de vértice, arrastar waypoint
-  heavy:   () => triggerHaptic('heavy'),    // ação destrutiva, long-press confirm
-  success: () => triggerHaptic('success'),  // polígono fechado, plano salvo
-  warning: () => triggerHaptic('warning'),  // validação falhou
-  error:   () => triggerHaptic('error'),    // erro de rede
-}
+  light: () => triggerHaptic("light"), // tocar vértice, foco em botão
+  medium: () => triggerHaptic("medium"), // snap, inserção de vértice, arrastar waypoint
+  heavy: () => triggerHaptic("heavy"), // ação destrutiva, long-press confirm
+  success: () => triggerHaptic("success"), // polígono fechado, plano salvo
+  warning: () => triggerHaptic("warning"), // validação falhou
+  error: () => triggerHaptic("error"), // erro de rede
+};
 ```
 
 **Pontos de integração:**
 
-| Evento | Haptic | Arquivo |
-|---|---|---|
-| Tocar vértice (pointerdown) | `light` | `PolygonEditHandles.tsx` |
-| Vértice snapping | `medium` | `PolygonEditHandles.tsx` |
+| Evento                             | Haptic    | Arquivo                                                  |
+| ---------------------------------- | --------- | -------------------------------------------------------- |
+| Tocar vértice (pointerdown)        | `light`   | `PolygonEditHandles.tsx`                                 |
+| Vértice snapping                   | `medium`  | `PolygonEditHandles.tsx`                                 |
 | Polígono fechado (draft → polygon) | `success` | `FreehandDrawOverlay.tsx`, `FlightPlannerMapContent.tsx` |
-| Waypoint adicionado manualmente | `light` | `FlightPlannerMapContent.tsx` |
-| Long-press confirmado (500ms) | `medium` | `mapLongPress.ts` |
-| Deletar vértice/waypoint | `heavy` | `PolygonEditHandles.tsx` |
-| Erro de cálculo de rota | `error` | `FlightPlannerCalculationBridge` |
-| Plano salvo com sucesso | `success` | `useProjects.ts` mutation onSuccess |
+| Waypoint adicionado manualmente    | `light`   | `FlightPlannerMapContent.tsx`                            |
+| Long-press confirmado (500ms)      | `medium`  | `mapLongPress.ts`                                        |
+| Deletar vértice/waypoint           | `heavy`   | `PolygonEditHandles.tsx`                                 |
+| Erro de cálculo de rota            | `error`   | `FlightPlannerCalculationBridge`                         |
+| Plano salvo com sucesso            | `success` | `useProjects.ts` mutation onSuccess                      |
 
 ---
 
@@ -254,24 +260,31 @@ Substituir `<Spinner>` nos Suspense boundaries dos painéis por skeletons contex
 // Primitivo base
 export function Skeleton({ className }: { className?: string }) {
   return (
-    <div className={cn('rounded-md bg-white/5', className)}
-         style={{ animation: 'dd-skeleton-shimmer 1.8s ease-in-out infinite' }}
+    <div
+      className={cn("rounded-md bg-white/5", className)}
+      style={{ animation: "dd-skeleton-shimmer 1.8s ease-in-out infinite" }}
     />
-  )
+  );
 }
 
 // Skeletons compostos por painel
-export function FlightConfigSkeleton()   // 3 seções de inputs
-export function ProjectListSkeleton()    // grid de 6 cards
-export function ResultsPanelSkeleton()   // status + seção de download
+export function FlightConfigSkeleton(); // 3 seções de inputs
+export function ProjectListSkeleton(); // grid de 6 cards
+export function ResultsPanelSkeleton(); // status + seção de download
 ```
 
 ```css
 /* globals.css */
 @keyframes dd-skeleton-shimmer {
-  0%   { background: rgba(255,255,255,0.04); }
-  50%  { background: rgba(255,255,255,0.09); }
-  100% { background: rgba(255,255,255,0.04); }
+  0% {
+    background: rgba(255, 255, 255, 0.04);
+  }
+  50% {
+    background: rgba(255, 255, 255, 0.09);
+  }
+  100% {
+    background: rgba(255, 255, 255, 0.04);
+  }
 }
 ```
 
@@ -286,8 +299,8 @@ Quando os stats de missão mudam (área, waypoints, tempo estimado), os números
 ```ts
 function useAnimatedNumber(
   value: number,
-  options?: { duration?: number; decimals?: number }
-): number
+  options?: { duration?: number; decimals?: number },
+): number;
 ```
 
 Implementação com `requestAnimationFrame` e interpolação linear — sem dependência externa. Integrado nos valores de `stats.area`, `stats.waypointCount`, `stats.estimatedDurationMin` no summary bar do `FlightPlannerConfigPanel`.
@@ -302,13 +315,13 @@ Implementação com `requestAnimationFrame` e interpolação linear — sem depe
 
 ```tsx
 type ProgressRingProps = {
-  progress:    number   // 0–100
-  size?:       number   // px, default 40
-  strokeWidth?: number  // default 3
-  color?:      string   // default #3ecf8e
-  animated?:   boolean  // SVG stroke-dashoffset animation
-  label?:      string   // texto central opcional
-}
+  progress: number; // 0–100
+  size?: number; // px, default 40
+  strokeWidth?: number; // default 3
+  color?: string; // default #3ecf8e
+  animated?: boolean; // SVG stroke-dashoffset animation
+  label?: string; // texto central opcional
+};
 ```
 
 SVG com `stroke-dashoffset` animado via CSS transition. O `ProjectStatusBadge` existente é substituído por `ProgressRing` quando `status === 'processing'`.
@@ -323,6 +336,7 @@ SVG com `stroke-dashoffset` animado via CSS transition. O `ProjectStatusBadge` e
 ```
 
 **Integrações:**
+
 - `app/src/features/projects/components/ProjectStatusBadge.tsx` — ProgressRing pequeno (32px) inline no card
 - `app/src/features/results/components/ResultsWorkspacePanel.tsx` — ProgressRing grande (64px) no topo do painel, mostrando `progress` do `useProjectStatus`
 
@@ -348,8 +362,15 @@ O handle do bottom sheet atual tem 3px de altura — imperceptível. Comunicar m
 ```css
 /* globals.css */
 @keyframes dd-handle-breathe {
-  0%, 100% { opacity: 0.35; transform: scaleX(1); }
-  50%       { opacity: 0.6;  transform: scaleX(1.08); }
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scaleX(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scaleX(1.08);
+  }
 }
 ```
 
@@ -359,42 +380,6 @@ O handle do bottom sheet atual tem 3px de altura — imperceptível. Comunicar m
 
 > Depende do `GestureManager` (Phase 0-D). Implementar em ordem: 2-A → 2-B → 2-C → 2-D.
 
----
-
-### 2-A: 2-Finger Pan Durante Modo Draw
-
-**Problema:** Hoje, ao desenhar um polígono com 1 dedo, é impossível pionar o mapa com 2 dedos sem sair do modo de desenho. O usuário é forçado a cancelar o desenho, mover o mapa e recomeçar.
-
-**Arquivo novo:** `app/src/features/map-engine/gestures/handlers/twoFingerPanHandler.ts`
-
-```ts
-export function createTwoFingerPanHandler(mapApi: MapImperativeApi): GestureHandler {
-  return {
-    id:       'two-finger-pan-draw',
-    priority: 10,
-    context:  ['draw-polygon', 'pen-freehand'],
-    fingers:  2,
-    onActivate:   () => { /* armazena midpoint inicial dos 2 toques */ },
-    onDeactivate: () => { /* cleanup */ },
-  }
-}
-```
-
-**Fluxo de controle:**
-
-```
-touchstart com 2 dedos em contexto 'draw-polygon'
-→ GestureManager.resolve(2) retorna twoFingerPanHandler (priority 10 > Mapbox 0)
-→ GestureManager chama disableDrawConflictGestures()
-→ handler captura touchmove e chama map.panBy() com delta do midpoint
-→ touchend com < 2 dedos: GestureManager desativa, chama enableDrawConflictGestures()
-→ desenho do polígono continua sem perda de estado
-```
-
-**Consideração de conflito com Leaflet:** Chamar `e.preventDefault()` no touchstart para cancelar o handler nativo do Leaflet antes de ativar o pan customizado. O Leaflet respeita `preventDefault` no touchstart.
-
----
-
 ### 2-B: Long-Press Contextual — Radial Menu
 
 Inspiração: DJI Ground Station Pro — long-press em área vazia do mapa abre um radial menu com os modos de interação disponíveis no contexto atual.
@@ -403,34 +388,40 @@ Inspiração: DJI Ground Station Pro — long-press em área vazia do mapa abre 
 
 ```tsx
 type MapContextAction = {
-  id:    string
-  label: string
-  icon:  LucideIcon
-}
+  id: string;
+  label: string;
+  icon: LucideIcon;
+};
 
 type MapContextMenuProps = {
-  position: { x: number; y: number }  // pixel coords no container do mapa
-  lngLat:   [number, number]           // coordenadas geográficas
-  actions:  MapContextAction[]
-  onSelect: (action: MapContextAction) => void
-  onDismiss: () => void
-}
+  position: { x: number; y: number }; // pixel coords no container do mapa
+  lngLat: [number, number]; // coordenadas geográficas
+  actions: MapContextAction[];
+  onSelect: (action: MapContextAction) => void;
+  onDismiss: () => void;
+};
 ```
 
 **Ações disponíveis por contexto:**
 
-| Contexto | Long-press em | Ações |
-|---|---|---|
-| `plan`, área vazia | fundo do mapa | Adicionar waypoint, Definir POI, Definir decolagem, Medir |
-| `plan`, sobre waypoint | marcador | Definir como decolagem, Deletar, Editar altitude |
-| `results` | fundo do mapa | Medir distância, Medir área, Adicionar anotação |
+| Contexto               | Long-press em | Ações                                                     |
+| ---------------------- | ------------- | --------------------------------------------------------- |
+| `plan`, área vazia     | fundo do mapa | Adicionar waypoint, Definir POI, Definir decolagem, Medir |
+| `plan`, sobre waypoint | marcador      | Definir como decolagem, Deletar, Editar altitude          |
+| `results`              | fundo do mapa | Medir distância, Medir área, Adicionar anotação           |
 
 **Visual — Radial Menu:** Não um menu tradicional. São 4–5 botões circulares (48px) dispostos em arco acima do ponto de toque. Aparecem com animação escalonada a partir do ponto de contato.
 
 ```css
 @keyframes dd-radial-item-in {
-  from { transform: scale(0.4) translateY(8px); opacity: 0; }
-  to   { transform: scale(1)   translateY(0);   opacity: 1; }
+  from {
+    transform: scale(0.4) translateY(8px);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
 }
 /* Cada item: animation-delay = index * 40ms */
 ```
@@ -452,7 +443,7 @@ type MapContextMenuProps = {
 export function createUndoRedoHandler(
   onUndo: () => void,
   onRedo: () => void,
-): GestureHandler
+): GestureHandler;
 ```
 
 **Adição ao `useFlightStore`:**
@@ -469,43 +460,11 @@ redo: () => void
 ```
 
 **Feedback visual:** Toast não-intrusivo no canto superior do mapa por 1.2s.
+
 - Undo: `"↩ Desfeito"`
 - Redo: `"↪ Refeito"`
 
 Toast usa animação `dd-dialog-mobile-in` adaptada (slide de cima para baixo, 200ms).
-
----
-
-### 2-D: Swipe Down para Dismiss Panel
-
-Deslizar o bottom sheet para baixo > 80px com velocidade > 400px/s fecha o painel.
-
-**Modificação:** `app/src/components/layout/WorkspaceLayoutPanel.tsx`
-
-Usar `useDragControls` do Framer Motion no handle:
-
-```tsx
-const dragControls = useDragControls()
-
-// No handle bar do bottom sheet:
-<motion.div
-  drag="y"
-  dragControls={dragControls}
-  dragConstraints={{ top: 0, bottom: 0 }}
-  dragElastic={{ top: 0, bottom: 0.3 }}
-  onDragEnd={(_, info) => {
-    if (info.offset.y > 80 && info.velocity.y > 400) {
-      dispatch({ type: 'hide' })
-    }
-  }}
->
-  {/* handle visual — mesma div do 1-E */}
-</motion.div>
-```
-
-A animação de dismiss usa o `workspacePanelMotion` existente — apenas dispara o estado `show: false`.
-
----
 
 ## Phase 3 — Stylus & Pen
 
@@ -519,15 +478,16 @@ Quando uma stylus está em contato com a tela, mostrar um indicador visual de pr
 
 ```tsx
 type StylusPressureIndicatorProps = {
-  containerRef: RefObject<HTMLElement>
-  visible:      boolean  // só renderiza em pen-freehand mode
-}
+  containerRef: RefObject<HTMLElement>;
+  visible: boolean; // só renderiza em pen-freehand mode
+};
 
 // Usa pointermove com pointerType === 'pen'
 // Acessa event.pressure (0–1, normalizado pelo browser)
 ```
 
 **Visual:** Canvas 2D com `position: absolute, pointer-events: none` sobreposto ao mapa. Dois círculos concêntricos centrados no ponto de contato:
+
 - Círculo interno (4px): sempre visível, indica posição exata
 - Círculo externo (8–18px, escala com pressão): `opacity = 0.2 + pressure * 0.6`
 
@@ -545,8 +505,14 @@ O `FreehandDrawOverlay` atual mostra raw stroke (cinza) + simplified (azul trace
 
 ```css
 @keyframes dd-polygon-fill-in {
-  from { fill-opacity: 0; stroke-opacity: 0.4; }
-  to   { fill-opacity: 0.2; stroke-opacity: 1; }
+  from {
+    fill-opacity: 0;
+    stroke-opacity: 0.4;
+  }
+  to {
+    fill-opacity: 0.2;
+    stroke-opacity: 1;
+  }
 }
 ```
 
@@ -582,6 +548,7 @@ Novo em tablet landscape (split view):
 ```
 
 O `WorkspaceLayoutPanel` recebe novo modo `'split'` além de `'desktop'` e `'mobile'`. Em `split`:
+
 - Painel não é overlay — é coluna lateral com `width: 320px` e `flex-shrink: 0`
 - Mapa recebe `flex: 1` e ocupa espaço restante
 - Bottom sheet e FAB são ocultados
@@ -598,12 +565,12 @@ Quando `selectedWaypointId !== null`, um toolbar bolha aparece próximo ao waypo
 
 ```tsx
 type WaypointContextToolbarProps = {
-  waypoint:    Waypoint
-  mapPosition: { x: number; y: number }  // pixel coords via map.latLngToContainerPoint()
-  onSetHome:      () => void
-  onDelete:       () => void
-  onEditAltitude: () => void
-}
+  waypoint: Waypoint;
+  mapPosition: { x: number; y: number }; // pixel coords via map.latLngToContainerPoint()
+  onSetHome: () => void;
+  onDelete: () => void;
+  onEditAltitude: () => void;
+};
 ```
 
 **Visual:** `position: absolute` no container do mapa. 3 botões de 44px (tablet: 48px) em linha horizontal. Aparece com `dd-wp-entra` acima do waypoint. Desaparece quando o usuário toca em outro lugar.
@@ -617,9 +584,9 @@ type WaypointContextToolbarProps = {
 ```ts
 // app/src/lib/deviceUtils.ts — nova função:
 export function touchTargetClass(breakpoint: Breakpoint): string {
-  if (breakpoint === 'desktop') return 'min-h-9 min-w-9'    // 36px
-  if (breakpoint === 'tablet')  return 'min-h-12 min-w-12'  // 48px — stylus-friendly
-  return 'min-h-11 min-w-11'                                 // 44px mobile
+  if (breakpoint === "desktop") return "min-h-9 min-w-9"; // 36px
+  if (breakpoint === "tablet") return "min-h-12 min-w-12"; // 48px — stylus-friendly
+  return "min-h-11 min-w-11"; // 44px mobile
 }
 ```
 
@@ -638,6 +605,7 @@ Quando o usuário muda altitude/overlap/speed no `FlightPlannerConfigPanel`, os 
 **Mudanças em `PlanLeafletPathAnimations.tsx`:**
 
 Ao detectar que `strips` do store mudaram:
+
 1. Fade out dos strips antigos: 120ms `opacity → 0`
 2. Fade in dos strips novos (stagger de 28ms por strip) via `runPolylineDrawReveal()` existente
 
@@ -647,13 +615,18 @@ Ao detectar que `strips` do store mudaram:
 
 ```css
 @keyframes dd-calc-progress {
-  0%   { transform: translateX(-100%); }
-  100% { transform: translateX(200%); }
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(200%);
+  }
 }
 
 .calc-progress-bar {
   position: absolute;
-  bottom: 0; left: 0;
+  bottom: 0;
+  left: 0;
   height: 2px;
   width: 40%;
   background: var(--brand-green);
@@ -671,9 +644,9 @@ Antes de executar a missão, o usuário pode assistir a uma simulação animada 
 
 ```tsx
 type MissionPreviewPlayerProps = {
-  waypoints: Waypoint[]
-  onClose:   () => void
-}
+  waypoints: Waypoint[];
+  onClose: () => void;
+};
 ```
 
 **Implementação:**
@@ -719,15 +692,17 @@ A troca de modo 2D/3D atualmente acontece de forma instantânea (corte).
 
 ```ts
 // Nova função no MapEngineContextValue:
-setModeAnimated: (mode: MapMode) => Promise<void>
+setModeAnimated: (mode: MapMode) => Promise<void>;
 ```
 
 **Sequência ao ir para 3D (800ms total):**
+
 1. `changeZoom(-1)` com easing `cinematic` — zoom out ligeiro para "abrir perspectiva"
 2. `changePitch(+45)` com easing `cinematic`, 800ms
 3. Rotação suave de 10° no bearing para sensação de "levantar voo"
 
 **Sequência ao voltar para 2D:**
+
 1. `setBearing(0)` — retorna ao norte
 2. `changePitch(-pitch_atual)` — achata para 0°
 3. `changeZoom(+1)` — zoom back in
@@ -782,24 +757,31 @@ Usar `@tanstack/react-virtual`:
 
 ```tsx
 const virtualizer = useVirtualizer({
-  count:           waypoints.length,
+  count: waypoints.length,
   getScrollElement: () => parentRef.current,
-  estimateSize:    () => 56,   // altura estimada de cada row
-  overscan:        5,
-})
+  estimateSize: () => 56, // altura estimada de cada row
+  overscan: 5,
+});
 
 return (
-  <div ref={parentRef} style={{ overflow: 'auto', height: '100%' }}>
-    <div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}>
-      {virtualizer.getVirtualItems().map(virtualRow => (
-        <div key={virtualRow.key}
-             style={{ position: 'absolute', top: virtualRow.start, width: '100%' }}>
+  <div ref={parentRef} style={{ overflow: "auto", height: "100%" }}>
+    <div
+      style={{
+        height: `${virtualizer.getTotalSize()}px`,
+        position: "relative",
+      }}
+    >
+      {virtualizer.getVirtualItems().map((virtualRow) => (
+        <div
+          key={virtualRow.key}
+          style={{ position: "absolute", top: virtualRow.start, width: "100%" }}
+        >
           <WaypointRow waypoint={waypoints[virtualRow.index]} />
         </div>
       ))}
     </div>
   </div>
-)
+);
 ```
 
 ---
@@ -821,8 +803,8 @@ Em `deviceTier === 'low'`, o `DroneRouteLayer` (Deck.gl PathLayer) causa jank. S
 
 ```ts
 // No FlightPlannerMapContent ou MapboxPlanOverlays:
-const { deviceTier } = useMapEngine()
-const RouteRenderer = deviceTier === 'low' ? RouteCanvas : DroneRouteDeckLayer
+const { deviceTier } = useMapEngine();
+const RouteRenderer = deviceTier === "low" ? RouteCanvas : DroneRouteDeckLayer;
 ```
 
 ---
@@ -835,18 +817,18 @@ O `vite-plugin-pwa` já está instalado. Configurar estratégias de cache por ti
 
 **Estratégias por tipo:**
 
-| Tipo | Estratégia | Quota | TTL |
-|---|---|---|---|
-| Tiles de satélite (Mapbox/Google) | CacheFirst | 500 tiles | 7 dias |
-| Dados de API (projetos, status) | NetworkFirst | — | 1h stale |
-| Weather tiles | NetworkOnly | — | — |
-| Assets estáticos da app | CacheFirst | — | versão do build |
+| Tipo                              | Estratégia   | Quota     | TTL             |
+| --------------------------------- | ------------ | --------- | --------------- |
+| Tiles de satélite (Mapbox/Google) | CacheFirst   | 500 tiles | 7 dias          |
+| Dados de API (projetos, status)   | NetworkFirst | —         | 1h stale        |
+| Weather tiles                     | NetworkOnly  | —         | —               |
+| Assets estáticos da app           | CacheFirst   | —         | versão do build |
 
 **Cache warming:** Quando um plano de voo é salvo, fazer prefetch dos tiles na bbox do polígono para zoom levels 14–17 (cobertura adequada para campo).
 
 ```ts
 // Em useProjects.ts — após saveFlightPlan mutation onSuccess:
-await warmTileCache(polygon, { zoomLevels: [14, 15, 16, 17] })
+await warmTileCache(polygon, { zoomLevels: [14, 15, 16, 17] });
 ```
 
 **UI:** Indicador "X tiles em cache" no painel de configuração com botão "Cachear área" manual. Verificar quota disponível via `navigator.storage.estimate()` antes de iniciar o cache.
@@ -874,15 +856,15 @@ Semana 6   Phase 6 completo (worker + virtual list + canvas + service worker)
 
 ## Riscos e Mitigações
 
-| Risco | Mitigação |
-|---|---|
-| Gestos conflitando com Mapbox/Leaflet | GestureManager sempre chama `disableDrawConflictGestures()` antes de ativar handler customizado. Handlers com `priority > 0` sempre ganham. |
-| Web Worker incompatível em Capacitor/Android | Feature detect `typeof Worker !== 'undefined'` — fallback para cálculo inline na thread principal |
-| Split view quebrando em orientação portrait | `useBreakpoint` + `screen.orientation.type` combinados — split view só ativa em `tablet + landscape` |
-| Virtual list com altura variável por waypoint | `estimateSize` conservador + `measureElement` para rows com conteúdo expandido |
-| Tile cache consumindo storage excessivo | Quota de 50MB com LRU eviction — verificar `navigator.storage.estimate()` antes de cachear |
-| Radial menu sobreposto por outros elementos | z-index dedicado (`z-[9999]`) com backdrop invisível para capturar tap-fora e chamar `onDismiss` |
-| Transição cinematográfica 2D→3D em low-tier | Verificar `deviceTier` — em `low` usar transição instant (0ms) em vez da animação |
+| Risco                                         | Mitigação                                                                                                                                   |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Gestos conflitando com Mapbox/Leaflet         | GestureManager sempre chama `disableDrawConflictGestures()` antes de ativar handler customizado. Handlers com `priority > 0` sempre ganham. |
+| Web Worker incompatível em Capacitor/Android  | Feature detect `typeof Worker !== 'undefined'` — fallback para cálculo inline na thread principal                                           |
+| Split view quebrando em orientação portrait   | `useBreakpoint` + `screen.orientation.type` combinados — split view só ativa em `tablet + landscape`                                        |
+| Virtual list com altura variável por waypoint | `estimateSize` conservador + `measureElement` para rows com conteúdo expandido                                                              |
+| Tile cache consumindo storage excessivo       | Quota de 50MB com LRU eviction — verificar `navigator.storage.estimate()` antes de cachear                                                  |
+| Radial menu sobreposto por outros elementos   | z-index dedicado (`z-[9999]`) com backdrop invisível para capturar tap-fora e chamar `onDismiss`                                            |
+| Transição cinematográfica 2D→3D em low-tier   | Verificar `deviceTier` — em `low` usar transição instant (0ms) em vez da animação                                                           |
 
 ---
 

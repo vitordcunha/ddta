@@ -376,6 +376,21 @@ body {
   }
 }
 
+@keyframes dd-skeleton-shimmer {
+  0%   { background: rgba(255, 255, 255, 0.04); }
+  50%  { background: rgba(255, 255, 255, 0.09); }
+  100% { background: rgba(255, 255, 255, 0.04); }
+}
+
+@keyframes dd-handle-breathe {
+  0%, 100% { opacity: 0.35; transform: scaleX(1); }
+  50%       { opacity: 0.6;  transform: scaleX(1.08); }
+}
+
+.progress-ring__circle {
+  transition: stroke-dashoffset 0.6s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
 @layer components {
   /** Painéis flutuantes estilo vidro (planejador, toolbar) */
   /** backdrop-blur é aplicado condicionalmente via glassClass(tier) em JS — ver lib/deviceUtils.ts */
