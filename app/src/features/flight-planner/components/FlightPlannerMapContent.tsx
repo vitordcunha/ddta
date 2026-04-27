@@ -69,6 +69,7 @@ import {
   RadialContextMenu,
   type RadialMenuItem,
 } from "@/features/map-engine/components/RadialContextMenu";
+import { WaypointContextToolbar } from "@/features/flight-planner/components/WaypointContextToolbar";
 
 function formatWpLine(w: Waypoint) {
   return `${w.lat.toFixed(6)}, ${w.lng.toFixed(6)} | ${w.altitude}m`;
@@ -816,6 +817,7 @@ export function FlightPlannerMapContent() {
         waypoints={waypoints}
         muteFullMission={muteFullMission}
       />
+      <WaypointContextToolbar />
       {poi ? <PlanPoiLeafletMarker poi={poi} /> : null}
 
       {calibrationMission && calibrationMapPreviewActive ? (

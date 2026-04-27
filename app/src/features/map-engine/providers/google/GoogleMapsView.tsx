@@ -28,6 +28,7 @@ type GoogleMapsViewProps = {
   panel: WorkspacePanelId;
   projectId: string | null;
   weatherTiles: WorkspaceMapWeatherTilesProps;
+  layoutRevision?: number;
 };
 
 function readGoogleMapsMapId(): string | undefined {
@@ -115,6 +116,7 @@ function GoogleMapsViewInner({
   panel,
   projectId,
   weatherTiles,
+  layoutRevision,
   googleMapsApiKey,
 }: GoogleMapsViewProps & { googleMapsApiKey: string }) {
   const showPlan = panel === "plan" && Boolean(projectId);
@@ -157,6 +159,14 @@ function GoogleMapsViewInner({
 
   const [map, setMap] = useState<google.maps.Map | null>(null);
   const [, setMap3dElement] = useState<Map3DElementInstance | null>(null);
+
+  useEffect(() => {
+    if (!map || layoutRevision === undefined) return;
+    const id = requestAnimationFrame(() => {
+      google.maps.event.trigger(map, "resize");
+    });
+    return () => cancelAnimationFrame(id);
+  }, [map, layoutRevision]);
 
   useGoogleMapsSync(useImmersivePane ? null : map);
 
@@ -368,6 +378,7 @@ export function GoogleMapsView({
   panel,
   projectId,
   weatherTiles,
+  layoutRevision,
 }: GoogleMapsViewProps) {
   const { googleMapsApiKey } = useMapEngine();
   const hasKey = googleMapsApiKey.length > 0;
@@ -395,6 +406,7 @@ export function GoogleMapsView({
       panel={panel}
       projectId={projectId}
       weatherTiles={weatherTiles}
+      layoutRevision={layoutRevision}
       googleMapsApiKey={googleMapsApiKey}
     />
   );

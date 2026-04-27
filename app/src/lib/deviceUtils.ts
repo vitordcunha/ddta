@@ -2,6 +2,14 @@ import { useContext } from "react";
 import { MapEngineContext } from "@/features/map-engine/MapEngineContext";
 import { cn } from "@/lib/utils";
 import type { DeviceTier } from "@/features/map-engine/utils/detectDeviceTier";
+import type { Breakpoint } from "@/hooks/useBreakpoint";
+
+/** Alvos de toque por breakpoint (Phase 4-C); usar em botões flutuantes e toolbars. */
+export function touchTargetClass(breakpoint: Breakpoint): string {
+  if (breakpoint === "desktop") return "min-h-9 min-w-9";
+  if (breakpoint === "tablet") return "min-h-12 min-w-12";
+  return "min-h-11 min-w-11";
+}
 
 export type BackdropBlurSize = "sm" | "md" | "lg" | "xl" | "2xl";
 

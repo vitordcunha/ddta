@@ -26,12 +26,14 @@ type MapboxMapViewProps = {
   panel: WorkspacePanelId;
   projectId: string | null;
   weatherTiles: WorkspaceMapWeatherTilesProps;
+  layoutRevision?: number;
 };
 
 export function MapboxMapView({
   panel,
   projectId,
   weatherTiles,
+  layoutRevision,
 }: MapboxMapViewProps) {
   const showPlan = panel === "plan" && Boolean(projectId);
   const showResults = panel === "results" && Boolean(projectId);
@@ -82,6 +84,16 @@ export function MapboxMapView({
   const onLoad = useCallback((e: { target: MapboxMap }) => {
     setMapInstance(e.target);
   }, []);
+
+  useEffect(() => {
+    if (layoutRevision === undefined) return;
+    const m = mapRef.current?.getMap();
+    if (!m) return;
+    const id = requestAnimationFrame(() => {
+      m.resize();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [layoutRevision, mapInstance]);
 
   useEffect(() => {
     if (!mapInstance) return;

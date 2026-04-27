@@ -179,6 +179,7 @@ export function WaypointEditorPanel() {
         <Field label={`Altitude (${wp.altitudeMode.toUpperCase()})`}>
           <div className="flex flex-col gap-2">
             <input
+              id="waypoint-alt-range"
               type="range"
               min={ALT_MIN}
               max={ALT_MAX}

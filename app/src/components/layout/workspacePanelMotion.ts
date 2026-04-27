@@ -75,3 +75,26 @@ export const mobileSidePanelSlide: Variants = {
   exit: (reduced: boolean) =>
     reduced ? { opacity: 0 } : { x: "105%", opacity: 1 },
 };
+
+/** Tablet landscape: painel entra da direita com desaceleração (Phase 4-A). */
+export const SPLIT_PANEL_EASE: [number, number, number, number] = [
+  0.22, 1, 0.36, 1,
+];
+
+export const splitPanelEnterTransition = (
+  prefersReducedMotion: boolean | null,
+): Transition => {
+  if (prefersReducedMotion) {
+    return { duration: 0.15, ease: "linear" };
+  }
+  return { duration: 0.35, ease: SPLIT_PANEL_EASE };
+};
+
+export const splitPanelSlide: Variants = {
+  initial: (reduced: boolean) =>
+    reduced ? { opacity: 0 } : { x: 28, opacity: 0.96 },
+  animate: (reduced: boolean) =>
+    reduced ? { opacity: 1 } : { x: 0, opacity: 1 },
+  exit: (reduced: boolean) =>
+    reduced ? { opacity: 0 } : { x: 24, opacity: 0 },
+};

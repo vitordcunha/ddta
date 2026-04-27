@@ -36,6 +36,8 @@ type WorkspaceMapViewProps = {
   panel: WorkspacePanelId;
   projectId: string | null;
   weatherTiles: WorkspaceMapWeatherTilesProps;
+  /** Incrementado quando o layout do mapa muda (ex.: split view) para forçar resize. */
+  layoutRevision?: number;
 };
 
 function LazyWrapper({ children }: { children: ReactNode }) {
@@ -46,6 +48,7 @@ export function WorkspaceMapView({
   panel,
   projectId,
   weatherTiles,
+  layoutRevision,
 }: WorkspaceMapViewProps) {
   const { provider } = useMapEngine();
 
@@ -56,6 +59,7 @@ export function WorkspaceMapView({
           panel={panel}
           projectId={projectId}
           weatherTiles={weatherTiles}
+          layoutRevision={layoutRevision}
         />
       </LazyWrapper>
     );
@@ -67,6 +71,7 @@ export function WorkspaceMapView({
           panel={panel}
           projectId={projectId}
           weatherTiles={weatherTiles}
+          layoutRevision={layoutRevision}
         />
       </LazyWrapper>
     );
@@ -77,6 +82,7 @@ export function WorkspaceMapView({
         panel={panel}
         projectId={projectId}
         weatherTiles={weatherTiles}
+        layoutRevision={layoutRevision}
       />
     </LazyWrapper>
   );

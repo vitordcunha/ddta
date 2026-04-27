@@ -3,6 +3,7 @@ import React, {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -37,14 +38,14 @@ const SettingsForm = lazy(() =>
   })),
 );
 const FlightPlannerConfigPanel = lazy(() =>
-  import(
-    "@/features/flight-planner/components/FlightPlannerConfigPanel"
-  ).then((m) => ({ default: m.FlightPlannerConfigPanel })),
+  import("@/features/flight-planner/components/FlightPlannerConfigPanel").then(
+    (m) => ({ default: m.FlightPlannerConfigPanel }),
+  ),
 );
 const ProjectsWorkspacePanel = lazy(() =>
-  import(
-    "@/features/projects/components/ProjectsWorkspacePanel"
-  ).then((m) => ({ default: m.ProjectsWorkspacePanel })),
+  import("@/features/projects/components/ProjectsWorkspacePanel").then((m) => ({
+    default: m.ProjectsWorkspacePanel,
+  })),
 );
 const ResultsWorkspacePanel = lazy(() =>
   import("@/features/results/components/ResultsWorkspacePanel").then((m) => ({
@@ -57,9 +58,9 @@ const UploadWorkspacePanel = lazy(() =>
   })),
 );
 const ProcessingQueuePanel = lazy(() =>
-  import(
-    "@/features/processing-queue/components/ProcessingQueuePanel"
-  ).then((m) => ({ default: m.ProcessingQueuePanel })),
+  import("@/features/processing-queue/components/ProcessingQueuePanel").then(
+    (m) => ({ default: m.ProcessingQueuePanel }),
+  ),
 );
 import { WindIndicatorOverlay } from "@/features/flight-planner/components/WindIndicatorOverlay";
 import type { DeviceTier } from "@/features/map-engine/utils/detectDeviceTier";
@@ -76,6 +77,10 @@ import { MapControls3D } from "@/features/map-engine/components/MapControls3D";
 import { PenStylusShadow } from "@/components/ui/PenStylusShadow";
 import { Button } from "@/components/ui/Button";
 import { Maximize2 } from "lucide-react";
+import { useBreakpoint } from "@/hooks/useBreakpoint";
+import { useLandscapeOrientation } from "@/hooks/useLandscapeOrientation";
+import { SPLIT_DETACH_SESSION_KEY } from "@/components/layout/workspaceSplitConstants";
+import { WorkspaceSplitDragActiveRefContext } from "@/components/layout/WorkspaceSplitDragContext";
 
 const PANEL_TITLES: Record<
   WorkspacePanelId,
@@ -317,35 +322,90 @@ export function WorkspacePage() {
   );
   const { mode, setBearing, changePitch, changeZoom } = useMapEngine();
 
-  const [isLandscape, setIsLandscape] = useState(
-    () =>
-      typeof window !== "undefined" && window.innerWidth > window.innerHeight,
-  );
-  const landscapeHandlerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
-  useEffect(() => {
-    const handler = () => {
-      if (landscapeHandlerRef.current)
-        clearTimeout(landscapeHandlerRef.current);
-      landscapeHandlerRef.current = setTimeout(() => {
-        setIsLandscape(window.innerWidth > window.innerHeight);
-      }, 100);
-    };
-    window.addEventListener("resize", handler);
-    window.addEventListener("orientationchange", handler);
-    return () => {
-      window.removeEventListener("resize", handler);
-      window.removeEventListener("orientationchange", handler);
-      if (landscapeHandlerRef.current)
-        clearTimeout(landscapeHandlerRef.current);
-    };
+  const landscape = useLandscapeOrientation();
+  const breakpoint = useBreakpoint();
+  const [splitDetached, setSplitDetached] = useState(false);
+  useLayoutEffect(() => {
+    try {
+      setSplitDetached(
+        typeof sessionStorage !== "undefined" &&
+          sessionStorage.getItem(SPLIT_DETACH_SESSION_KEY) === "1",
+      );
+    } catch {
+      setSplitDetached(false);
+    }
   }, []);
 
+  const splitLayoutActive =
+    breakpoint === "tablet" && landscape && !splitDetached;
+
+  const handleSplitDetach = useCallback(() => {
+    try {
+      sessionStorage.setItem(SPLIT_DETACH_SESSION_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+    setSplitDetached(true);
+  }, []);
+
+  const handleSplitReattach = useCallback(() => {
+    try {
+      sessionStorage.removeItem(SPLIT_DETACH_SESSION_KEY);
+    } catch {
+      /* ignore */
+    }
+    setSplitDetached(false);
+  }, []);
+
+  const [splitMetrics, setSplitMetrics] = useState({
+    widthPx: 336,
+    collapsed: false,
+  });
+  const [mapLayoutRevision, setMapLayoutRevision] = useState(0);
+  const bumpMapLayout = useCallback(() => {
+    setMapLayoutRevision((n) => n + 1);
+  }, []);
+
+  const onSplitMetrics = useCallback(
+    (m: { widthPx: number; collapsed: boolean }) => {
+      setSplitMetrics(m);
+    },
+    [],
+  );
+
+  const workspaceShellRef = useRef<HTMLDivElement>(null);
+  const splitDragActiveRef = useRef(false);
+  /** True enquanto o separador split está em arraste — evita `--right-panel-width` no style React (preview imperativo). */
+  const [splitHandleDragging, setSplitHandleDragging] = useState(false);
+
+  const applySplitPreviewWidth = useCallback((widthPx: number) => {
+    const v = `${widthPx}px`;
+    workspaceShellRef.current?.style.setProperty("--right-panel-width", v);
+    document.documentElement.style.setProperty("--right-panel-width", v);
+  }, []);
+
+  const onSplitDragStart = useCallback(() => {
+    setSplitHandleDragging(true);
+  }, []);
+
+  const onSplitDragEnd = useCallback(() => {
+    setSplitHandleDragging(false);
+  }, []);
+
+  const splitWasActiveRef = useRef(false);
+  useEffect(() => {
+    if (splitLayoutActive && !splitWasActiveRef.current) {
+      bumpMapLayout();
+    }
+    splitWasActiveRef.current = splitLayoutActive;
+  }, [splitLayoutActive, bumpMapLayout]);
+
   // CSS custom property: width of the right panel so overlays can avoid it.
-  const rightPanelWidth = rightPanelOpen
-    ? "var(--layout-panel-width, 32rem)"
-    : "0px";
+  const rightPanelWidth = splitLayoutActive
+    ? `${splitMetrics.widthPx}px`
+    : rightPanelOpen
+      ? "var(--layout-panel-width, 32rem)"
+      : "0px";
 
   // Portais (ex.: planejador expandido) ficam sob `body` e não herdam o `div` do workspace.
   const planDrawBannerActive =
@@ -353,7 +413,9 @@ export function WorkspacePage() {
 
   useEffect(() => {
     const root = document.documentElement;
-    root.style.setProperty("--right-panel-width", rightPanelWidth);
+    if (!(splitLayoutActive && splitHandleDragging)) {
+      root.style.setProperty("--right-panel-width", rightPanelWidth);
+    }
     root.style.setProperty("--left-sidebar-width", "3rem");
     root.style.setProperty(
       "--topbar-height",
@@ -366,13 +428,20 @@ export function WorkspacePage() {
       root.style.removeProperty("--topbar-height");
       root.style.removeProperty("--workspace-edge-controls-gap");
     };
-  }, [rightPanelWidth, planDrawBannerActive]);
+  }, [
+    rightPanelWidth,
+    planDrawBannerActive,
+    splitLayoutActive,
+    splitHandleDragging,
+  ]);
 
   const plannerMapChromeTop = planDrawBannerActive
     ? "calc(max(4.5rem, calc(3.5rem + var(--safe-area-top))) + 1.875rem)"
     : "max(4.5rem, calc(3.5rem + var(--safe-area-top)))";
 
-  const plannerShellForPlan = useMemo((): FlightPlannerShellProps | undefined => {
+  const plannerShellForPlan = useMemo(():
+    | FlightPlannerShellProps
+    | undefined => {
     if (panel !== "plan" || !projectId || !project) return undefined;
     return {
       expandedOpen: expandedPlannerOpen,
@@ -380,13 +449,7 @@ export function WorkspacePage() {
       expandedTab: expandedPlannerTab,
       onExpandedTabChange: setExpandedPlannerTab,
     };
-  }, [
-    panel,
-    projectId,
-    project,
-    expandedPlannerOpen,
-    expandedPlannerTab,
-  ]);
+  }, [panel, projectId, project, expandedPlannerOpen, expandedPlannerTab]);
 
   const planFloatingHeaderRight = useMemo(
     () =>
@@ -432,33 +495,24 @@ export function WorkspacePage() {
     ],
   );
 
-  return (
-    <div
-      className="fixed inset-0 z-0 overflow-hidden bg-[#0f0f0f] text-[#fafafa]"
-      style={
-        {
-          "--right-panel-width": rightPanelWidth,
-          "--left-sidebar-width": "3rem",
-          "--topbar-height": planDrawBannerActive
-            ? "calc(3.5rem + 1.875rem)"
-            : "3.5rem",
-        } as React.CSSProperties
-      }
-    >
-      <PenStylusShadow />
-      <div className="absolute inset-0 z-0">
-        {showPlanChrome ? <FlightPlannerCalculationBridge /> : null}
-        <WorkspaceMapView
-          panel={panel}
-          projectId={projectId}
-          weatherTiles={{
-            overlay: mapWeather.overlay,
-            openWeatherApiKey: mapWeather.openWeatherApiKey,
-            onRadarStatus: mapWeather.onRadarStatus,
-          }}
-        />
-      </div>
+  const mapViewCore = (
+    <>
+      {showPlanChrome ? <FlightPlannerCalculationBridge /> : null}
+      <WorkspaceMapView
+        panel={panel}
+        projectId={projectId}
+        layoutRevision={mapLayoutRevision}
+        weatherTiles={{
+          overlay: mapWeather.overlay,
+          openWeatherApiKey: mapWeather.openWeatherApiKey,
+          onRadarStatus: mapWeather.onRadarStatus,
+        }}
+      />
+    </>
+  );
 
+  const mapOverlays = (
+    <>
       <div
         className="pointer-events-none absolute inset-0 z-[5]"
         aria-hidden={!(showPlanChrome || showResultsChrome)}
@@ -513,7 +567,6 @@ export function WorkspacePage() {
         </div>
       ) : null}
 
-      {/* Vento: canto superior direito; não depende de --right-panel-width (fica fixo com a faixa do FAB). */}
       {showPlanChrome ? (
         <div
           className="pointer-events-none absolute z-[44] flex flex-col items-end"
@@ -535,7 +588,7 @@ export function WorkspacePage() {
           }}
         >
           <MapControls3D
-            visible={mode === "3d" && isLandscape}
+            visible={mode === "3d" && landscape}
             onBearingReset={() => setBearing(0)}
             onPitchChange={(delta) => changePitch(delta)}
             onZoom={(delta) => changeZoom(delta)}
@@ -543,7 +596,6 @@ export function WorkspacePage() {
         </div>
       ) : null}
 
-      {/* Banner: plano modificado manualmente */}
       {showPlanChrome && hasManualWaypoints && manualWaypointsBannerVisible ? (
         <div
           className={cn(
@@ -598,40 +650,100 @@ export function WorkspacePage() {
           </button>
         </div>
       ) : null}
+    </>
+  );
 
-      <WorkspaceTopBar />
+  const workspaceShellStyle = {
+    ...(!(splitLayoutActive && splitHandleDragging)
+      ? { "--right-panel-width": rightPanelWidth }
+      : {}),
+    "--left-sidebar-width": "3rem",
+    "--topbar-height": planDrawBannerActive
+      ? "calc(3.5rem + 1.875rem)"
+      : "3.5rem",
+  } as React.CSSProperties;
 
+  return (
+    <WorkspaceSplitDragActiveRefContext.Provider value={splitDragActiveRef}>
       <div
-        className="pointer-events-none absolute left-0 right-0 z-40 p-3 sm:p-4"
-        style={{
-          top: "max(3.5rem, calc(3.5rem + var(--safe-area-top)))",
-          bottom: "max(0.75rem, var(--safe-area-bottom))",
-          paddingLeft: "max(0.75rem, env(safe-area-inset-left, 0px))",
-          paddingRight:
-            "calc(max(0.75rem, env(safe-area-inset-right, 0px)) + var(--workspace-edge-controls-gap, 3.5rem))",
-        }}
+        ref={workspaceShellRef}
+        className="fixed inset-0 z-0 overflow-hidden bg-[#0f0f0f] text-[#fafafa]"
+        style={workspaceShellStyle}
       >
+      <PenStylusShadow />
+      {splitLayoutActive ? (
         <div
-          className={cn(
-            // Com painel fechado, nao cobrir o mapa: so filhos com pointer-events-auto
-            // (barra / botao de reabrir) recebem toque; o restante passa ao mapa.
-            rightPanelOpen ? "pointer-events-auto" : "pointer-events-none",
-            "flex h-full w-full min-w-0 min-h-0 flex-col justify-end",
-            "lg:ml-auto lg:max-w-lg lg:items-stretch lg:justify-start",
-            "landscape:min-h-0",
-          )}
+          className="absolute left-0 right-0 bottom-0 z-0 flex min-h-0 w-full min-w-0 flex-row"
+          style={{ top: "var(--topbar-height, 3.5rem)" }}
         >
+          <div className="relative z-0 min-h-0 min-w-0 flex-1">
+            <div className="absolute inset-0 z-0 min-h-0 w-full min-w-0">
+              {mapViewCore}
+            </div>
+            {mapOverlays}
+          </div>
           <WorkspaceLayoutPanel
             collapsedLabel={collapsedLabel}
             onOpenChange={onRightPanelOpenChange}
             transitionPending={isRightPanelTransitionPending}
+            splitLayout
+            onSplitDetach={handleSplitDetach}
+            onSplitMetrics={onSplitMetrics}
+            onSplitResizeCommit={bumpMapLayout}
+            splitDragActiveRef={splitDragActiveRef}
+            onSplitDragStart={onSplitDragStart}
+            onSplitDragEnd={onSplitDragEnd}
+            onSplitPreviewWidth={applySplitPreviewWidth}
           >
-            <Suspense fallback={<FlightConfigSkeleton />}>
-              {mainPanel}
-            </Suspense>
+            <Suspense fallback={<FlightConfigSkeleton />}>{mainPanel}</Suspense>
           </WorkspaceLayoutPanel>
         </div>
+      ) : (
+        <>
+          <div className="absolute inset-0 z-0">{mapViewCore}</div>
+          {mapOverlays}
+        </>
+      )}
+
+      <WorkspaceTopBar />
+
+      {!splitLayoutActive ? (
+        <div
+          className="pointer-events-none absolute left-0 right-0 z-40 p-3 sm:p-4"
+          style={{
+            top: "max(3.5rem, calc(3.5rem + var(--safe-area-top)))",
+            bottom: "max(0.75rem, var(--safe-area-bottom))",
+            paddingLeft: "max(0.75rem, env(safe-area-inset-left, 0px))",
+            paddingRight:
+              "calc(max(0.75rem, env(safe-area-inset-right, 0px)) + var(--workspace-edge-controls-gap, 3.5rem))",
+          }}
+        >
+          <div
+            className={cn(
+              rightPanelOpen ? "pointer-events-auto" : "pointer-events-none",
+              "flex h-full w-full min-w-0 min-h-0 flex-col justify-end",
+              "lg:ml-auto lg:max-w-lg lg:items-stretch lg:justify-start",
+              "landscape:min-h-0",
+            )}
+          >
+            <WorkspaceLayoutPanel
+              collapsedLabel={collapsedLabel}
+              onOpenChange={onRightPanelOpenChange}
+              transitionPending={isRightPanelTransitionPending}
+              onSplitReattach={
+                breakpoint === "tablet" && landscape && splitDetached
+                  ? handleSplitReattach
+                  : undefined
+              }
+            >
+              <Suspense fallback={<FlightConfigSkeleton />}>
+                {mainPanel}
+              </Suspense>
+            </WorkspaceLayoutPanel>
+          </div>
+        </div>
+      ) : null}
       </div>
-    </div>
+    </WorkspaceSplitDragActiveRefContext.Provider>
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { MapContainer, useMap } from "react-leaflet";
+import { useWorkspaceSplitDragActiveRef } from "@/components/layout/WorkspaceSplitDragContext";
 import { MapUserLocationLayers } from "@/components/map/MapUserLocation";
 import { PlannerMapBaseLayer } from "@/components/map/PlannerMapBaseLayer";
 import { FlightPlannerMapContent } from "@/features/flight-planner/components/FlightPlannerMapContent";
@@ -32,6 +33,19 @@ const SMOOTH_FIT: L.FitBoundsOptions = {
 function LeafletMapApiRegistrar() {
   const map = useMap();
   const { registerMapApi } = useMapEngine();
+  const splitDragActiveRef = useWorkspaceSplitDragActiveRef();
+
+  useEffect(() => {
+    const el = map.getContainer();
+    const parent = el.parentElement;
+    if (!parent) return;
+    const ro = new ResizeObserver(() => {
+      if (splitDragActiveRef?.current) return;
+      map.invalidateSize({ animate: false });
+    });
+    ro.observe(parent);
+    return () => ro.disconnect();
+  }, [map, splitDragActiveRef]);
 
   useEffect(() => {
     registerMapApi({
@@ -70,10 +84,23 @@ function LeafletMapApiRegistrar() {
   return null;
 }
 
+function LeafletLayoutRevisionSync({ revision }: { revision?: number }) {
+  const map = useMap();
+  useEffect(() => {
+    if (revision === undefined) return;
+    const id = requestAnimationFrame(() => {
+      map.invalidateSize({ animate: false });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [revision, map]);
+  return null;
+}
+
 type LeafletMapViewProps = {
   panel: WorkspacePanelId;
   projectId: string | null;
   weatherTiles: WorkspaceMapWeatherTilesProps;
+  layoutRevision?: number;
 };
 
 function LeafletViewSync() {
@@ -107,6 +134,7 @@ export function LeafletMapView({
   panel,
   projectId,
   weatherTiles,
+  layoutRevision,
 }: LeafletMapViewProps) {
   const showPlan = panel === "plan" && Boolean(projectId);
   const showResults = panel === "results" && Boolean(projectId);
@@ -140,6 +168,7 @@ export function LeafletMapView({
       >
         <LeafletViewSync />
         <LeafletMapApiRegistrar />
+        <LeafletLayoutRevisionSync revision={layoutRevision} />
         <MapBootstrapView focus={bootstrapFocus} />
         {showResults ? (
           <>
