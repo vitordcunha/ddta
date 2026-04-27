@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Layer, Source } from 'react-map-gl/mapbox'
 import { useMapEngine } from '@/features/map-engine/useMapEngine'
 import { useFlightStore } from '@/features/flight-planner/stores/useFlightStore'
@@ -7,6 +7,54 @@ type MapboxPlanOverlaysProps = {
   /** Em 2D: respeita toggles do painel. Em 3D a rota/waypoints vão para deck.gl (sempre false aqui). */
   nativeShowRoute: boolean
   nativeShowWaypoints: boolean
+}
+
+const prefersMapReduceMotion = () => {
+  if (typeof window === "undefined" || !window.matchMedia) return false
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches
+}
+
+/**
+ * Opacidade 0→1 alinhada ao plano (Leaflet); reexecuta se a feição for removida e recriada.
+ */
+function useMapboxEntrance(visible: boolean) {
+  const [t, setT] = useState(0)
+  const prevVis = useRef(false)
+
+  useEffect(() => {
+    const red = prefersMapReduceMotion()
+    if (!visible) {
+      setT(0)
+      prevVis.current = false
+      return
+    }
+    if (red) {
+      setT(1)
+      prevVis.current = true
+      return
+    }
+    if (prevVis.current) {
+      setT(1)
+      return
+    }
+    prevVis.current = true
+    setT(0)
+    const d = 460
+    const t0 = performance.now()
+    let raf: number
+    const step = (now: number) => {
+      const u = Math.min(1, (now - t0) / d)
+      const e = 1 - (1 - u) ** 2.35
+      setT(e)
+      if (u < 1) {
+        raf = requestAnimationFrame(step)
+      }
+    }
+    raf = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(raf)
+  }, [visible])
+
+  return t
 }
 
 /** Pré-visualização somente leitura da área e rota no Mapbox (edição completa permanece no Leaflet até a fase 5/6). */
@@ -69,6 +117,12 @@ export function MapboxPlanOverlays({
     }
   }, [poi, mode])
 
+  const tPoly = useMapboxEntrance(!!polygon)
+  const tDraft = useMapboxEntrance(!!draftLine)
+  const tRoute = useMapboxEntrance(Boolean(nativeShowRoute && routeLine))
+  const tWp = useMapboxEntrance(Boolean(nativeShowWaypoints && wpPoints))
+  const tPoi = useMapboxEntrance(!!poiPoint)
+
   return (
     <>
       {polygon ? (
@@ -76,12 +130,16 @@ export function MapboxPlanOverlays({
           <Layer
             id="dronedata-plan-polygon-fill"
             type="fill"
-            paint={{ 'fill-color': '#22c55e', 'fill-opacity': 0.2 }}
+            paint={{ 'fill-color': '#22c55e', 'fill-opacity': 0.2 * tPoly }}
           />
           <Layer
             id="dronedata-plan-polygon-line"
             type="line"
-            paint={{ 'line-color': '#4ade80', 'line-width': 2 }}
+            paint={{
+              'line-color': '#4ade80',
+              'line-width': 2,
+              'line-opacity': tPoly,
+            }}
           />
         </Source>
       ) : null}
@@ -91,7 +149,12 @@ export function MapboxPlanOverlays({
           <Layer
             id="dronedata-plan-draft-line"
             type="line"
-            paint={{ 'line-color': '#fbbf24', 'line-width': 2, 'line-dasharray': [2, 2] }}
+            paint={{
+              'line-color': '#fbbf24',
+              'line-width': 2,
+              'line-dasharray': [2, 2],
+              'line-opacity': 0.2 + 0.8 * tDraft,
+            }}
           />
         </Source>
       ) : null}
@@ -101,7 +164,11 @@ export function MapboxPlanOverlays({
           <Layer
             id="dronedata-plan-route-line"
             type="line"
-            paint={{ 'line-color': '#facc15', 'line-width': 3, 'line-opacity': 0.88 }}
+            paint={{
+              'line-color': '#facc15',
+              'line-width': 3,
+              'line-opacity': 0.88 * tRoute,
+            }}
           />
         </Source>
       ) : null}
@@ -112,9 +179,10 @@ export function MapboxPlanOverlays({
             id="dronedata-plan-waypoints-circle"
             type="circle"
             paint={{
-              'circle-radius': 5,
+              'circle-radius': 1 + 4 * tWp,
               'circle-stroke-width': 2,
               'circle-stroke-color': '#0a0a0a',
+              'circle-stroke-opacity': tWp,
               'circle-color': [
                 'match',
                 ['get', 'role'],
@@ -124,6 +192,7 @@ export function MapboxPlanOverlays({
                 '#ef4444',
                 '#fafafa',
               ],
+              'circle-opacity': tWp,
             }}
           />
         </Source>
@@ -135,11 +204,12 @@ export function MapboxPlanOverlays({
             id="dronedata-plan-poi-circle"
             type="circle"
             paint={{
-              'circle-radius': 9,
+              'circle-radius': 1 + 8 * tPoi,
               'circle-stroke-width': 2,
               'circle-stroke-color': '#ecfeff',
+              'circle-stroke-opacity': tPoi,
               'circle-color': '#06b6d4',
-              'circle-opacity': 0.92,
+              'circle-opacity': 0.92 * tPoi,
             }}
           />
         </Source>

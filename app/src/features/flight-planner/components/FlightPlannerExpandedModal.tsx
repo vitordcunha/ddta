@@ -86,7 +86,8 @@ export function FlightPlannerExpandedModal({
               narrowPortrait
                 ? undefined
                 : {
-                    right: "max(0px, var(--right-panel-width, 0px))",
+                    right:
+                      "max(0px, calc(var(--right-panel-width, 0px) + var(--workspace-edge-controls-gap, 3.5rem)))",
                   }
             }
           >

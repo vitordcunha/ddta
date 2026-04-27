@@ -4,8 +4,8 @@ import { NavigationControl, ScaleControl } from 'react-map-gl/mapbox'
 export function MapboxControls() {
   return (
     <>
-      <NavigationControl showZoom showCompass position="top-right" />
-      <ScaleControl unit="metric" position="bottom-right" />
+      <NavigationControl showZoom showCompass position="bottom-left" />
+      <ScaleControl unit="metric" position="bottom-left" />
     </>
   )
 }

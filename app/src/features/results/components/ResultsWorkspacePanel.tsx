@@ -244,6 +244,7 @@ export function ResultsWorkspacePanel({
           sparseCloudAvailable={sparseCloudAvailable}
           sparseCloudTrackProgress={sparseCloudTrackProgress}
           sparseCloudTrackHint={sparseCloudTrackHint}
+          onViewCloud3D={sparseCloudAvailable ? () => setCloudViewerOpen(true) : undefined}
           onFinalizeStuckMain={finalizeStuckMain}
           onFinalizeStuckPreview={
             previewStatus === "processing" ? finalizeStuckPreview : undefined
@@ -288,6 +289,17 @@ export function ResultsWorkspacePanel({
         projectId={projectId}
         projectName={project?.name ?? "Projeto"}
       />
+
+      {cloudViewerOpen && (
+        <Suspense fallback={null}>
+          <SparseCloudViewer
+            open
+            onOpenChange={(open) => { if (!open) setCloudViewerOpen(false) }}
+            projectId={projectId}
+            projectName={project?.name ?? "Projeto"}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

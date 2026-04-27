@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { GoogleMap, Marker, useJsApiLoader } from "@react-google-maps/api";
+import { GoogleMap, useJsApiLoader } from "@react-google-maps/api";
 import { Link } from "react-router-dom";
 import type { WorkspacePanelId } from "@/constants/routes";
 import { toWorkspace } from "@/constants/routes";
@@ -36,15 +36,79 @@ function readGoogleMapsMapId(): string | undefined {
   return t && t.length > 0 ? t : undefined;
 }
 
+/** Marcador de posição do usuário usando AdvancedMarkerElement (substitui Marker deprecated). */
 /**
- * Painel resultados em 3D continua no mapa classico (Deck + trilha real).
- * Painel plano em 3D usa mapa imersivo (predios/vegetacao fotorealisticos).
+ * Marcador de posição do usuário via OverlayView (HTML puro).
+ * Não usa google.maps.Marker (deprecated) nem AdvancedMarkerElement (exige mapId).
  */
-function usePhotorealistic3dForPanel(
-  panel: WorkspacePanelId,
+function GoogleMapsUserPositionMarker({
+  map,
+  position,
+}: {
+  map: google.maps.Map | null;
+  position: { lat: number; lng: number } | null;
+}) {
+  useEffect(() => {
+    if (!map || !position) return;
+
+    class DotOverlay extends google.maps.OverlayView {
+      private _pos: google.maps.LatLngLiteral;
+      private _div: HTMLDivElement | null = null;
+
+      constructor(pos: google.maps.LatLngLiteral) {
+        super();
+        this._pos = pos;
+      }
+
+      onAdd() {
+        const div = document.createElement("div");
+        div.style.cssText =
+          "position:absolute;width:14px;height:14px;border-radius:50%;" +
+          "background:#2563eb;border:2.5px solid #fff;" +
+          "box-shadow:0 1px 4px rgba(0,0,0,.35);transform:translate(-50%,-50%);" +
+          "pointer-events:none";
+        this._div = div;
+        this.getPanes()!.overlayLayer.appendChild(div);
+      }
+
+      draw() {
+        const proj = this.getProjection();
+        if (!proj || !this._div) return;
+        const point = proj.fromLatLngToDivPixel(
+          new google.maps.LatLng(this._pos.lat, this._pos.lng),
+        );
+        if (point) {
+          this._div.style.left = `${point.x}px`;
+          this._div.style.top = `${point.y}px`;
+        }
+      }
+
+      onRemove() {
+        if (this._div?.parentNode) this._div.parentNode.removeChild(this._div);
+        this._div = null;
+      }
+    }
+
+    const overlay = new DotOverlay(position);
+    overlay.setMap(map);
+
+    return () => {
+      overlay.setMap(null);
+    };
+  }, [map, position?.lat, position?.lng]);
+
+  return null;
+}
+
+/**
+ * Retorna true quando o modo imersivo (Map3DElement com prédios/vegetação) deve ser usado.
+ * Ativado em qualquer painel quando o usuário optou por "immersive" via modal de confirmação.
+ */
+function usePhotorealistic3d(
   mode: "2d" | "3d",
+  google3dPreference: "immersive" | "classic" | null,
 ): boolean {
-  return mode === "3d" && panel === "plan";
+  return mode === "3d" && google3dPreference === "immersive";
 }
 
 function GoogleMapsViewInner({
@@ -58,7 +122,7 @@ function GoogleMapsViewInner({
   const showPlanOrResults = showPlan || showResults;
   const { position, locate } = useGeolocationContext();
   const bootstrapFocus = useMapBootstrapFocus({ locate });
-  const { mode, center, zoom, setCenterZoom } = useMapEngine();
+  const { mode, center, zoom, setCenterZoom, google3dPreference } = useMapEngine();
   const deckVis = useFlightStore((s) =>
     panel === "results"
       ? s.deckMapVisibility.results
@@ -74,7 +138,7 @@ function GoogleMapsViewInner({
   const mapId = readGoogleMapsMapId();
   const mapIdDefined = Boolean(mapId);
 
-  const photorealistic3d = usePhotorealistic3dForPanel(panel, mode);
+  const photorealistic3d = usePhotorealistic3d(mode, google3dPreference);
   const [immersive3dFailed, setImmersive3dFailed] = useState(false);
   const useImmersivePane = photorealistic3d && !immersive3dFailed;
 
@@ -97,7 +161,7 @@ function GoogleMapsViewInner({
 
   const classicMapOptions = useMemo(
     () => buildGoogleWorkspaceClassicMapOptions({ mapId, mode }),
-    [mapId, mode],
+    [mapId, mode, isLoaded],
   );
 
   useEffect(() => {
@@ -218,7 +282,9 @@ function GoogleMapsViewInner({
           center={center}
           zoom={zoom}
           mapId={mapId}
+          panel={panel}
           showPlan={showPlan}
+          showResults={showResults}
           onViewportFromCamera={onViewportFromImmersive}
           onMap3dElementChange={setMap3dElement}
           onLoadError={onImmersiveLoadError}
@@ -236,23 +302,15 @@ function GoogleMapsViewInner({
           options={classicMapOptions}
           onLoad={onMapLoad}
           onUnmount={onMapUnmount}
-        >
-          {position ? (
-            <Marker
-              position={{ lat: position.lat, lng: position.lng }}
-              icon={{
-                path: google.maps.SymbolPath.CIRCLE,
-                scale: 7,
-                fillColor: "#2563eb",
-                fillOpacity: 1,
-                strokeColor: "#ffffff",
-                strokeWeight: 2,
-              }}
-            />
-          ) : null}
-        </GoogleMap>
+        />
       )}
-
+      {/* Marcador de posição gerenciado fora do GoogleMap para evitar uso do Marker deprecated */}
+      {!useImmersivePane ? (
+        <GoogleMapsUserPositionMarker
+          map={map}
+          position={position ? { lat: position.lat, lng: position.lng } : null}
+        />
+      ) : null}
       {!useImmersivePane ? (
         <GoogleMapsLayers
           map={map}
@@ -263,13 +321,20 @@ function GoogleMapsViewInner({
         />
       ) : null}
 
-      {showPlanOrResults && !useImmersivePane ? (
+      {/*
+        Mantemos o componente sempre montado (quando há plan/results) mas passamos map=null
+        quando useImmersivePane=true. Isso força o DeckGLGoogleOverlay a chamar
+        overlay.setMap(null) ANTES do GoogleMap clássico desmontar e destruir o contexto
+        WebGL, evitando "Cannot read properties of null (addListener)" e erros de WebGL.
+      */}
+      {showPlanOrResults ? (
         <GoogleMapsDeckRouteOverlay
-          map={map}
+          map={useImmersivePane ? null : map}
           mapIdDefined={mapIdDefined}
           panel={panel}
           projectId={projectId}
           enabled={
+            !useImmersivePane &&
             showPlanOrResults &&
             (mode === "3d" ||
               selectedWaypointId != null ||

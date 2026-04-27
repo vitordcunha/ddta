@@ -27,6 +27,7 @@ import {
   type WeatherMapLayerId,
   type WeatherMapOverlayPreferences,
 } from "@/components/map/weather/mapWeatherTypes";
+import { Google3DConfirmModal } from "@/features/map-engine/components/Google3DConfirmModal";
 import { LeftRailIconPopoverTrigger } from "./LeftRailIconPopoverTrigger";
 import { LeftRailPopoverContent } from "./LeftRailPopoverContent";
 
@@ -75,10 +76,45 @@ export function MapLayersPopover({
   radarMessage,
 }: MapLayersPopoverProps) {
   const [open, setOpen] = useState(false);
+  const [google3dModalOpen, setGoogle3dModalOpen] = useState(false);
 
   const baseLayer = useFlightStore((s) => s.plannerBaseLayer);
   const setPlannerBaseLayer = useFlightStore((s) => s.setPlannerBaseLayer);
-  const { provider, mode: mapMode, setProvider, setMode: setMapMode } = useMapEngine();
+  const {
+    provider,
+    mode: mapMode,
+    setProvider,
+    setMode: setMapMode,
+    google3dPreference,
+    setGoogle3dPreference,
+  } = useMapEngine();
+
+  const handleActivate3d = useCallback(() => {
+    if (provider === "google") {
+      // Sempre mostra o modal ao ativar 3D no Google Maps.
+      // Fecha o popover antes para evitar conflito de foco entre Radix Popover (modal) e Dialog.
+      setOpen(false);
+      // Pequeno delay para garantir que o popover fechou antes do dialog abrir.
+      window.setTimeout(() => setGoogle3dModalOpen(true), 50);
+      return;
+    }
+    setMapMode("3d");
+    setOpen(false);
+  }, [provider, setMapMode]);
+
+  const handleGoogle3dSelectImmersive = useCallback(() => {
+    setGoogle3dPreference("immersive");
+    setMapMode("3d");
+    setGoogle3dModalOpen(false);
+    setOpen(false);
+  }, [setGoogle3dPreference, setMapMode]);
+
+  const handleGoogle3dSelectClassic = useCallback(() => {
+    setGoogle3dPreference("classic");
+    setMapMode("3d");
+    setGoogle3dModalOpen(false);
+    setOpen(false);
+  }, [setGoogle3dPreference, setMapMode]);
 
   const setLayer = useCallback(
     (layerId: WeatherMapLayerId) => setOverlay((prev) => ({ ...prev, layerId })),
@@ -103,6 +139,13 @@ export function MapLayersPopover({
       : undefined;
 
   return (
+    <>
+    <Google3DConfirmModal
+      open={google3dModalOpen}
+      currentPreference={google3dPreference}
+      onSelectImmersive={handleGoogle3dSelectImmersive}
+      onSelectClassic={handleGoogle3dSelectClassic}
+    />
     <Popover.Root open={open} onOpenChange={setOpen} modal>
       <LeftRailIconPopoverTrigger
         deviceTier={deviceTier}
@@ -190,15 +233,15 @@ export function MapLayersPopover({
           </button>
           <button
             type="button"
-            disabled={provider === "leaflet" || deviceTier === "none"}
-            onClick={() => setMapMode("3d")}
+            disabled={provider === "leaflet" || (deviceTier === "none" && provider !== "google")}
+            onClick={handleActivate3d}
             title={map3dHint}
             className={cn(
               "touch-manipulation flex-1 rounded-lg border px-2 py-2 text-[11px] font-medium transition",
               mapMode === "3d"
                 ? "border-primary-500/40 bg-primary-500/12 text-white"
                 : "border-white/10 bg-white/[0.04] text-neutral-300 hover:bg-white/[0.08]",
-              (provider === "leaflet" || deviceTier === "none") &&
+              (provider === "leaflet" || (deviceTier === "none" && provider !== "google")) &&
                 "cursor-not-allowed opacity-40 hover:bg-white/[0.04]",
             )}
           >
@@ -323,5 +366,6 @@ export function MapLayersPopover({
         ) : null}
       </LeftRailPopoverContent>
     </Popover.Root>
+    </>
   );
 }

@@ -17,7 +17,10 @@ export function ResultsMapToolsOverlay() {
   return (
     <div
       className="pointer-events-auto absolute bottom-3 z-[2000] max-w-xs rounded-xl border border-[#2e2e2e] bg-[#171717]/90 p-3 text-xs text-neutral-200 backdrop-blur-md"
-      style={{ right: "calc(var(--right-panel-width, 0px) + 0.75rem)" }}
+      style={{
+        right:
+          "calc(var(--right-panel-width, 0px) + var(--workspace-edge-controls-gap, 3.5rem) + 0.75rem)",
+      }}
     >
       {distanceResult ? <p>Distancia: {distanceResult}</p> : null}
       {areaResult ? <p>Area: {areaResult}</p> : null}

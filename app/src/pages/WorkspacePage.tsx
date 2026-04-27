@@ -357,10 +357,12 @@ export function WorkspacePage() {
       "--topbar-height",
       planDrawBannerActive ? "calc(3.5rem + 1.875rem)" : "3.5rem",
     );
+    root.style.setProperty("--workspace-edge-controls-gap", "3.5rem");
     return () => {
       root.style.removeProperty("--right-panel-width");
       root.style.removeProperty("--left-sidebar-width");
       root.style.removeProperty("--topbar-height");
+      root.style.removeProperty("--workspace-edge-controls-gap");
     };
   }, [rightPanelWidth, planDrawBannerActive]);
 
@@ -487,12 +489,24 @@ export function WorkspacePage() {
         </div>
       ) : null}
 
-      {/* WindIndicator + MapControls3D stacked above it */}
+      {/* Vento: canto superior direito; não depende de --right-panel-width (fica fixo com a faixa do FAB). */}
       {showPlanChrome ? (
         <div
-          className="pointer-events-none absolute z-[44] flex flex-col items-end gap-2"
+          className="pointer-events-none absolute z-[44] flex flex-col items-end"
           style={{
-            right: "calc(var(--right-panel-width) + 0.75rem)",
+            right: "max(0.75rem, env(safe-area-inset-right, 0px))",
+            top: plannerMapChromeTop,
+          }}
+        >
+          <WindIndicatorOverlay />
+        </div>
+      ) : null}
+
+      {showPlanChrome ? (
+        <div
+          className="pointer-events-none absolute z-[44] flex flex-col items-end"
+          style={{
+            right: "max(0.75rem, env(safe-area-inset-right, 0px))",
             bottom: "max(6rem, calc(0.75rem + var(--safe-area-bottom, 0px)))",
           }}
         >
@@ -502,7 +516,6 @@ export function WorkspacePage() {
             onPitchChange={(delta) => changePitch(delta)}
             onZoom={(delta) => changeZoom(delta)}
           />
-          <WindIndicatorOverlay />
         </div>
       ) : null}
 
@@ -570,7 +583,8 @@ export function WorkspacePage() {
           top: "max(3.5rem, calc(3.5rem + var(--safe-area-top)))",
           bottom: "max(0.75rem, var(--safe-area-bottom))",
           paddingLeft: "max(0.75rem, env(safe-area-inset-left, 0px))",
-          paddingRight: "max(0.75rem, env(safe-area-inset-right, 0px))",
+          paddingRight:
+            "calc(max(0.75rem, env(safe-area-inset-right, 0px)) + var(--workspace-edge-controls-gap, 3.5rem))",
         }}
       >
         <div

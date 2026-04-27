@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import type { Strip } from "@/features/flight-planner/types";
 import { createPortal } from "react-dom";
 import turfBbox from "@turf/bbox";
 import centerOfMass from "@turf/center-of-mass";
@@ -24,6 +25,12 @@ import {
   useMap,
   useMapEvents,
 } from "react-leaflet";
+import {
+  MappingPolygonAnimated,
+  RoutePolylineAnimated,
+  StripPolylineAnimated,
+  SweepScanLineAnimated,
+} from "@/features/flight-planner/components/PlanLeafletPathAnimations";
 import { useMapEngine } from "@/features/map-engine/useMapEngine";
 import { DrawingToolbar } from "@/features/flight-planner/components/DrawingToolbar";
 import { CrosshairOverlay } from "@/features/flight-planner/components/CrosshairOverlay";
@@ -32,7 +39,7 @@ import { PolygonEditHandles } from "@/features/flight-planner/components/Polygon
 import { createMapboxElevationService } from "@/features/flight-planner/services/elevationService";
 import { usePointerPressHighlightOverButton } from "@/features/flight-planner/hooks/usePointerPressHighlightOverButton";
 import { useFlightStore } from "@/features/flight-planner/stores/useFlightStore";
-import type { FlightStats, Strip, Waypoint } from "@/features/flight-planner/types";
+import type { FlightStats, Waypoint } from "@/features/flight-planner/types";
 import type { PointOfInterest } from "@/features/flight-planner/types/poi";
 import { newPointOfInterest } from "@/features/flight-planner/types/poi";
 import { applyTerrainToWaypoints } from "@/features/flight-planner/utils/terrainFollowingApply";
@@ -121,7 +128,7 @@ function mkMissionWpIcon(dPx: number, fill: string, stroke: string, strokeW: num
     className: "plan-wp-mission-icon",
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
-    html: `<div style="width:${dPx}px;height:${dPx}px;border-radius:50%;background:${fill};border:${strokeW}px solid ${stroke};box-sizing:border-box;margin:${pad}px;touch-action:none"/>`,
+    html: `<div class="plan-wp-mission-inner" style="width:${dPx}px;height:${dPx}px;border-radius:50%;background:${fill};border:${strokeW}px solid ${stroke};box-sizing:border-box;margin:${pad}px;touch-action:none"/>`,
   });
 }
 
@@ -176,6 +183,9 @@ const WP_MISSION_ICON = {
   midMuted: mkMissionWpIcon(10, "#94a3b8", "#cbd5e1", 1),
 } as const;
 
+/** Uma animação de entrada por waypoint; reset ao desmontar (incl. “desfazer”). */
+const waypointsEnterAnimationPlayed = new Set<string>();
+
 function MissionWaypointMarkerWithHoldDelete({
   waypoint,
   icon,
@@ -210,6 +220,30 @@ function MissionWaypointMarkerWithHoldDelete({
     deleteBtnRef,
   );
 
+  useLayoutEffect(() => {
+    if (waypointsEnterAnimationPlayed.has(waypoint.id)) return;
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      waypointsEnterAnimationPlayed.add(waypoint.id);
+      return;
+    }
+    const el = markerRef.current?.getElement();
+    if (!el) return;
+    const inner = el.querySelector(".plan-wp-mission-inner");
+    if (!inner) return;
+    waypointsEnterAnimationPlayed.add(waypoint.id);
+    inner.classList.add("dd-wp-entra");
+    const onEnd = () => {
+      inner.classList.remove("dd-wp-entra");
+    };
+    inner.addEventListener("animationend", onEnd, { once: true });
+    return () => {
+      waypointsEnterAnimationPlayed.delete(waypoint.id);
+    };
+  }, [waypoint.id, waypoint.lat, waypoint.lng]);
+
   const performDelete = useCallback(() => {
     const st = useFlightStore.getState();
     if (st.waypoints.length <= 1) {
@@ -241,6 +275,27 @@ function MissionWaypointMarkerWithHoldDelete({
 
   const cancelHold = useCallback(() => {
     holdCtlRef.current?.cancelActiveHold();
+  }, []);
+
+  const applyDragStartAnim = useCallback(() => {
+    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const el = markerRef.current?.getElement();
+    const inner = el?.querySelector<HTMLElement>(".plan-wp-mission-inner");
+    if (!inner) return;
+    inner.classList.remove("dd-wp-drag-settle");
+    inner.classList.add("dd-wp-dragging");
+  }, []);
+
+  const applyDragEndAnim = useCallback(() => {
+    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const el = markerRef.current?.getElement();
+    const inner = el?.querySelector<HTMLElement>(".plan-wp-mission-inner");
+    if (!inner) return;
+    inner.classList.remove("dd-wp-dragging");
+    inner.classList.add("dd-wp-drag-settle");
+    inner.addEventListener("animationend", () => {
+      inner.classList.remove("dd-wp-drag-settle");
+    }, { once: true });
   }, []);
 
   useLayoutEffect(() => {
@@ -333,8 +388,14 @@ function MissionWaypointMarkerWithHoldDelete({
           L.DomEvent.stopPropagation(e);
           setSelectedWaypoint(waypoint.id);
         },
-        dragstart: cancelHold,
-        dragend: onDragEndForId(waypoint.id),
+        dragstart: () => {
+          cancelHold();
+          applyDragStartAnim();
+        },
+        dragend: (e) => {
+          applyDragEndAnim();
+          onDragEndForId(waypoint.id)(e);
+        },
         popupclose: () => setShowDeleteMenu(false),
       }}
     >
@@ -649,6 +710,37 @@ export function FlightPlannerMapContent() {
   const deletePolygonVertex = useFlightStore((s) => s.deletePolygonVertex);
   const insertPolygonVertex = useFlightStore((s) => s.insertPolygonVertex);
 
+  // ── Versão de pulso do polígono (incrementa ao mover vértice) ──
+  const [polygonPulseVersion, setPolygonPulseVersion] = useState(0);
+  const handleVertexMove = useCallback((i: number, ll: [number, number]) => {
+    movePolygonVertex(i, ll);
+    setPolygonPulseVersion((v) => v + 1);
+  }, [movePolygonVertex]);
+
+  // ── Exit animation para strips que saem do mapa ────────────────
+  const [exitStrips, setExitStrips] = useState<Strip[]>([]);
+  const exitStripsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevStripsRef = useRef<Strip[]>(strips);
+
+  useEffect(() => {
+    if (prevStripsRef.current === strips) return;
+    const prev = prevStripsRef.current;
+    prevStripsRef.current = strips;
+    if (prev.length === 0) return;
+    if (exitStripsTimerRef.current) clearTimeout(exitStripsTimerRef.current);
+    setExitStrips(prev);
+    exitStripsTimerRef.current = setTimeout(() => {
+      setExitStrips([]);
+      exitStripsTimerRef.current = null;
+    }, 280);
+  }, [strips]);
+
+  // ── Versão dos strips para sweep scan line ─────────────────────
+  const stripsAnimVersion = useMemo(() => {
+    if (strips.length === 0) return "";
+    return `${strips.length}:${strips[0]!.id}`;
+  }, [strips]);
+
   const isDrawMode = plannerInteractionMode === "draw";
   const crosshairEnabled = readUserPreferencesFromStorage().crosshairDrawMode;
   const map = useMap();
@@ -740,8 +832,27 @@ export function FlightPlannerMapContent() {
     [polygon],
   );
 
+  const waypointIdSig = useMemo(
+    () => waypoints.map((w) => w.id).join("\u001f"),
+    [waypoints],
+  );
+
   /** Missão completa recuada visualmente enquanto a pré-visualização de calibração está ativa. */
   const muteFullMission = calibrationMapPreviewActive;
+
+  /** Caminho de varredura: centros dos strips em ordem, para a sweep scan line. */
+  const sweepPath = useMemo((): [number, number][] => {
+    if (strips.length < 2) return [];
+    return strips
+      .map((s) => {
+        const coords = s.coordinates;
+        if (coords.length < 2) return null;
+        const mid = Math.floor(coords.length / 2);
+        const [lon, lat] = coords[mid]!;
+        return [lat, lon] as [number, number];
+      })
+      .filter((p): p is [number, number] => p !== null);
+  }, [strips]);
 
   const waypointFovFootprintLatLng = useMemo((): [number, number][] | null => {
     if (!selectedWaypointId) return null;
@@ -751,6 +862,14 @@ export function FlightPlannerMapContent() {
     if (!g || g.footprintPolygon.length < 4) return null;
     return g.footprintPolygon.map(([lng, lat]) => [lat, lng] as [number, number]);
   }, [selectedWaypointId, waypoints, droneCameraParams]);
+
+  /** Versão de geometria do footprint de câmera; muda ao alterar altitude/params sem trocar waypoint selecionado. */
+  const footprintVersion = useMemo((): string | null => {
+    if (!waypointFovFootprintLatLng || waypointFovFootprintLatLng.length < 3) return null;
+    const lats = waypointFovFootprintLatLng.map((p) => p[0]);
+    const lngs = waypointFovFootprintLatLng.map((p) => p[1]);
+    return `${Math.min(...lats).toFixed(5)},${Math.max(...lats).toFixed(5)},${Math.min(...lngs).toFixed(5)},${Math.max(...lngs).toFixed(5)}`;
+  }, [waypointFovFootprintLatLng]);
 
   return (
     <>
@@ -767,7 +886,7 @@ export function FlightPlannerMapContent() {
       <PolygonEditHandles
         polygon={polygon}
         editable={!isDrawMode && polygon !== null}
-        onVertexMove={(i, ll) => movePolygonVertex(i, ll)}
+        onVertexMove={handleVertexMove}
         onVertexDelete={(i) => { haptic.medium(); deletePolygonVertex(i); }}
         onMidpointInsert={(after, ll) => { haptic.light(); insertPolygonVertex(after, ll); }}
       />
@@ -791,6 +910,7 @@ export function FlightPlannerMapContent() {
             center={pt}
             radius={canCloseHere ? 8 : 4}
             pathOptions={{
+              className: "dd-map-draft-vert",
               color: canCloseHere ? "#3ecf8e" : "#60A5FA",
               weight: canCloseHere ? 2.5 : 1.5,
               fillColor: canCloseHere
@@ -811,12 +931,19 @@ export function FlightPlannerMapContent() {
       {draftPoints.length > 1 && (
         <Polyline
           positions={draftPoints}
-          pathOptions={{ color: "#60A5FA", dashArray: "4 4", weight: 2 }}
+          pathOptions={{
+            className: "dd-map-draft-line",
+            color: "#60A5FA",
+            dashArray: "4 4",
+            weight: 2,
+          }}
         />
       )}
 
       {polygonCoords.length > 0 && (
-        <Polygon
+        <MappingPolygonAnimated
+          enableEnter
+          pulseVersion={polygonPulseVersion}
           positions={polygonCoords}
           pathOptions={
             muteFullMission
@@ -834,9 +961,21 @@ export function FlightPlannerMapContent() {
           }
         />
       )}
-      {strips.map((strip) => (
-        <Polyline
+      {exitStrips.map((strip, stripIdx) => (
+        <StripPolylineAnimated
+          key={`exit-${strip.id}`}
+          staggerIndex={stripIdx}
+          totalStrips={exitStrips.length}
+          isExiting
+          positions={strip.coordinates.map(([lon, lat]) => [lat, lon])}
+          pathOptions={{ color: "#00c573", weight: 2, opacity: 0.75 }}
+        />
+      ))}
+      {strips.map((strip, stripIdx) => (
+        <StripPolylineAnimated
           key={strip.id}
+          staggerIndex={stripIdx}
+          totalStrips={strips.length}
           positions={strip.coordinates.map(([lon, lat]) => [lat, lon])}
           pathOptions={
             muteFullMission
@@ -850,8 +989,13 @@ export function FlightPlannerMapContent() {
           }
         />
       ))}
+      {!muteFullMission && sweepPath.length >= 2 ? (
+        <SweepScanLineAnimated key={stripsAnimVersion} positions={sweepPath} />
+      ) : null}
       {waypoints.length > 1 ? (
-        <Polyline
+        <RoutePolylineAnimated
+          waypointsCount={waypoints.length}
+          waypointIdSig={waypointIdSig}
           positions={waypoints.map((w) => [w.lat, w.lng])}
           pathOptions={
             muteFullMission
@@ -872,10 +1016,14 @@ export function FlightPlannerMapContent() {
           }
         />
       ) : null}
-      {waypointFovFootprintLatLng && waypointFovFootprintLatLng.length >= 3 ? (
-        <Polygon
+      {waypointFovFootprintLatLng && waypointFovFootprintLatLng.length >= 3 && selectedWaypointId ? (
+        <MappingPolygonAnimated
+          key={selectedWaypointId}
+          enableEnter
+          geometryVersion={footprintVersion}
           positions={waypointFovFootprintLatLng}
           pathOptions={{
+            className: "dd-map-fov-footprint",
             color: "#f59e0b",
             weight: 2,
             fillColor: "#fbbf24",

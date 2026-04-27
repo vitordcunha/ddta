@@ -16,13 +16,11 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 import {
   layoutMobileHeaderClass,
   layoutMobileSheetShellClass,
-  layoutPanelCollapseClass,
   layoutPanelFabClass,
   useDeviceTier,
 } from "@/lib/deviceUtils";
 import { cn } from "@/lib/utils";
 import {
-  desktopFabSlide,
   desktopPanelSlide,
   mobileCollapsedBarSlide,
   mobileSheetSlide,
@@ -132,12 +130,25 @@ export function WorkspaceLayoutPanel({
           layoutOpen ? (e) => e.stopPropagation() : undefined
         }
       >
+        {/* Sempre o mesmo ponto (meio-direita); o painel fica inserido vía padding do WorkspacePage. */}
+        <button
+          type="button"
+          onClick={onToggle}
+          className={layoutPanelFabClass(deviceTier)}
+          title={show ? "Recolher painel" : "Abrir painel"}
+        >
+          {show ? (
+            <PanelRightClose className="size-5 shrink-0" />
+          ) : (
+            <PanelRightOpen className="size-5 shrink-0" />
+          )}
+        </button>
         <motion.div
           key="workspace-desktop-panel"
           role="region"
           aria-label="Painel do workspace"
           aria-hidden={!show}
-          className="panel-animated flex h-full min-h-0 w-full min-w-0 flex-col"
+          className="panel-animated flex h-full min-h-0 w-full min-w-0 flex-1 flex-col"
           variants={desktopPanelSlide}
           initial={false}
           animate={show ? "animate" : "exit"}
@@ -148,43 +159,10 @@ export function WorkspaceLayoutPanel({
             pointerEvents: show && layoutOpen ? "auto" : "none",
           }}
         >
-          <div className="flex h-9 shrink-0 items-center justify-end pr-0.5">
-            <button
-              type="button"
-              onClick={onToggle}
-              className={cn(
-                layoutPanelCollapseClass(deviceTier),
-                "hover:text-white",
-              )}
-              title="Recolher painel"
-            >
-              <PanelRightClose className="size-5" />
-            </button>
-          </div>
           <div className="panel-container min-h-0 w-full min-w-0 flex-1 overflow-x-hidden [overscroll-behavior:contain]">
             {children}
           </div>
         </motion.div>
-
-        <AnimatePresence>
-          {!show && !layoutHold ? (
-            <motion.button
-              key="workspace-desktop-reopen"
-              type="button"
-              onClick={onToggle}
-              title="Abrir painel"
-              variants={desktopFabSlide}
-              initial="initial"
-              animate="animate"
-              exit="exit"
-              custom={reduced}
-              transition={fabTransition}
-              className={layoutPanelFabClass(deviceTier)}
-            >
-              <PanelRightOpen className="size-5 shrink-0" />
-            </motion.button>
-          ) : null}
-        </AnimatePresence>
       </div>
     );
   }

@@ -34,9 +34,8 @@ function ControlButton({
 }
 
 /**
- * Módulo 1: Cluster de controles 3D — reset do norte, pitch e zoom.
- * Posicionado acima do WindIndicatorOverlay no canto inferior direito do mapa.
- * Visível apenas em modo 3D (Mapbox ou Google Maps) e orientação landscape.
+ * Cluster 3D (norte, pitch, zoom) no canto inferior direito; o vento fica no topo
+ * (WorkspacePage). Visível em 3D + landscape; controles nativos são deslocados no provider.
  */
 export function MapControls3D({ onBearingReset, onPitchChange, onZoom, visible }: MapControls3DProps) {
   if (!visible) return null

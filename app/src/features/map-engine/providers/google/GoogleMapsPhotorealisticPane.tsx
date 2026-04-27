@@ -19,7 +19,6 @@ export type Map3DElementInstance = HTMLElement & {
   range?: number
   tilt?: number
   heading?: number
-  gestureHandling?: string
 }
 
 type Polyline3DInstance = HTMLElement & {
@@ -67,7 +66,9 @@ type GoogleMapsPhotorealisticPaneProps = {
   center: [number, number]
   zoom: number
   mapId?: string
+  panel: 'plan' | 'results' | string
   showPlan: boolean
+  showResults: boolean
   onViewportFromCamera: (center: [number, number], zoom: number) => void
   onMap3dElementChange: (el: Map3DElementInstance | null) => void
   onLoadError: () => void
@@ -81,7 +82,9 @@ export function GoogleMapsPhotorealisticPane({
   center,
   zoom,
   mapId,
+  panel,
   showPlan,
+  showResults,
   onViewportFromCamera,
   onMap3dElementChange,
   onLoadError,
@@ -108,7 +111,9 @@ export function GoogleMapsPhotorealisticPane({
   const polygon = useFlightStore((s) => s.polygon)
   const draftPoints = useFlightStore((s) => s.draftPoints)
   const waypoints = useFlightStore((s) => s.waypoints)
-  const deckVis = useFlightStore((s) => s.deckMapVisibility.plan)
+  const deckVisPlan = useFlightStore((s) => s.deckMapVisibility.plan)
+  const deckVisResults = useFlightStore((s) => s.deckMapVisibility.results)
+  const deckVis = panel === 'results' ? deckVisResults : deckVisPlan
 
   const removeOverlay = (node: HTMLElement | null) => {
     if (node?.parentNode) node.parentNode.removeChild(node)
@@ -142,7 +147,6 @@ export function GoogleMapsPhotorealisticPane({
           tilt: 62,
           range: zoomLevelToCameraRangeMeters(z, c[0], window.innerHeight),
           heading: 0,
-          gestureHandling: 'greedy',
         })
         if (mapId) el.mapId = mapId
 
@@ -184,7 +188,13 @@ export function GoogleMapsPhotorealisticPane({
           el.removeEventListener('gmp-centerchange', debouncedPush)
           el.removeEventListener('gmp-rangechange', debouncedPush)
         }
-      } catch {
+      } catch (err) {
+        console.error(
+          '[GoogleMaps3D] Falha ao carregar maps3d (importLibrary). ' +
+          'Verifique se a Maps JavaScript API suporta a biblioteca "maps3d" ' +
+          'e se a chave de API está configurada corretamente no Google Cloud Console.',
+          err,
+        )
         if (!cancelled) onLoadErrorRef.current()
       }
     })()
@@ -300,7 +310,8 @@ export function GoogleMapsPhotorealisticPane({
 
   useEffect(() => {
     const el = map3dRef.current
-    if (!el || !showPlan || !ready) return
+    // O handler de clique para desenho só é relevante no painel de plano
+    if (!el || !showPlan || showResults || !ready) return
 
     const onClick = (ev: Event) => {
       const e = ev as CustomEvent<{ position?: google.maps.LatLngAltitudeLiteral }>
@@ -336,7 +347,7 @@ export function GoogleMapsPhotorealisticPane({
     return () => {
       el.removeEventListener('gmp-click', onClick)
     }
-  }, [showPlan, ready])
+  }, [showPlan, showResults, ready])
 
   return <div ref={containerRef} className="absolute inset-0 z-0 min-h-0 w-full" />
 }

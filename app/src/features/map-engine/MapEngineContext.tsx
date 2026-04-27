@@ -54,6 +54,7 @@ type StoredPrefs = {
   mode?: MapMode;
   center?: [number, number];
   zoom?: number;
+  google3dPreference?: "immersive" | "classic";
 };
 
 const DEFAULT_CENTER: [number, number] = [-15.793889, -47.882778];
@@ -70,7 +71,9 @@ function readPrefs(): StoredPrefs {
 }
 
 function writePrefs(
-  p: Pick<MapEngineState, "provider" | "mode" | "center" | "zoom">,
+  p: Pick<MapEngineState, "provider" | "mode" | "center" | "zoom"> & {
+    google3dPreference?: "immersive" | "classic" | null;
+  },
 ) {
   try {
     localStorage.setItem(
@@ -80,6 +83,7 @@ function writePrefs(
         mode: p.mode,
         center: p.center,
         zoom: p.zoom,
+        google3dPreference: p.google3dPreference ?? undefined,
       }),
     );
   } catch {
@@ -91,6 +95,9 @@ export type MapEngineContextValue = MapEngineState & {
   mapboxToken: string;
   googleMapsApiKey: string;
   deviceTier: DeviceTier;
+  /** Preferência do usuário para 3D no Google Maps: imersivo (Map3DElement) ou clássico (tilt 45°). */
+  google3dPreference: "immersive" | "classic" | null;
+  setGoogle3dPreference: (p: "immersive" | "classic" | null) => void;
   setProvider: (provider: MapProvider) => void;
   setMode: (mode: MapMode) => void;
   setCenterZoom: (center: [number, number], zoom: number) => void;
@@ -151,6 +158,16 @@ export function MapEngineProvider({ children }: { children: ReactNode }) {
   const [googleMapsApiKey, setGoogleMapsApiKey] = useState("");
   // Detectado uma vez no boot; imutável durante a sessão.
   const [deviceTier] = useState<DeviceTier>(() => detectDeviceTier());
+  const [google3dPreference, setGoogle3dPreferenceState] = useState<
+    "immersive" | "classic" | null
+  >(stored.google3dPreference ?? null);
+
+  const setGoogle3dPreference = useCallback(
+    (p: "immersive" | "classic" | null) => {
+      setGoogle3dPreferenceState(p);
+    },
+    [],
+  );
 
   // API imperativa do provider ativo; substituída quando o provider monta.
   const mapApiRef = useRef<Partial<MapImperativeApi>>({});
@@ -214,8 +231,8 @@ export function MapEngineProvider({ children }: { children: ReactNode }) {
   }, [deviceTier]);
 
   useEffect(() => {
-    writePrefs({ provider, mode, center, zoom });
-  }, [provider, mode, center, zoom]);
+    writePrefs({ provider, mode, center, zoom, google3dPreference });
+  }, [provider, mode, center, zoom, google3dPreference]);
 
   const setCenterZoom = useCallback(
     (nextCenter: [number, number], nextZoom: number) => {
@@ -267,14 +284,17 @@ export function MapEngineProvider({ children }: { children: ReactNode }) {
   }, [provider, mode]);
 
   useEffect(() => {
-    if (
-      deviceTier === "none" &&
-      (provider === "mapbox" || provider === "google") &&
-      mode === "3d"
-    ) {
+    if (deviceTier !== "none" || mode !== "3d") return;
+    // Mapbox: bloqueia sempre em deviceTier "none"
+    if (provider === "mapbox") {
+      setModeState("2d");
+      return;
+    }
+    // Google: bloqueia apenas se o usuário ainda não confirmou via modal
+    if (provider === "google" && google3dPreference === null) {
       setModeState("2d");
     }
-  }, [deviceTier, provider, mode]);
+  }, [deviceTier, provider, mode, google3dPreference]);
 
   const value = useMemo<MapEngineContextValue>(
     () => ({
@@ -285,6 +305,8 @@ export function MapEngineProvider({ children }: { children: ReactNode }) {
       mapboxToken,
       googleMapsApiKey,
       deviceTier,
+      google3dPreference,
+      setGoogle3dPreference,
       setProvider,
       setMode,
       setCenterZoom,
@@ -308,6 +330,8 @@ export function MapEngineProvider({ children }: { children: ReactNode }) {
       mapboxToken,
       googleMapsApiKey,
       deviceTier,
+      google3dPreference,
+      setGoogle3dPreference,
       setProvider,
       setMode,
       setCenterZoom,
