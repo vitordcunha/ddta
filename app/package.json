@@ -6,10 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:capacitor": "CAPACITOR_BUILD=1 pnpm run build",
     "lint": "eslint .",
     "test": "vitest run",
     "preview": "vite preview",
-    "cap:sync": "npm run build && cap sync android",
+    "cap:sync": "pnpm run build:capacitor && cap sync android",
     "cap:open": "cap open android"
   },
   "dependencies": {
