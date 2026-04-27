@@ -3,6 +3,8 @@ import { Capacitor } from '@capacitor/core'
 /**
  * Splash escuro, edge-to-edge no shell nativo (overlay + barras transparentes no Android
  * compatível), ícones da status bar claros para fundo escuro do mapa.
+ * No Android, status + navigation bar ficam ocultas em modo imersivo (`MainActivity`);
+ * landscape é fixo via `AndroidManifest` (`sensorLandscape`).
  * Teclado: `resize: none` em `capacitor.config.ts` (Android).
  */
 export async function initCapacitorShell(): Promise<void> {

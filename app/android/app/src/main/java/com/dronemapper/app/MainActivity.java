@@ -5,6 +5,8 @@ import android.view.View;
 import android.view.WindowManager;
 import android.webkit.WebSettings;
 import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.Bridge;
 
@@ -17,7 +19,33 @@ public class MainActivity extends BridgeActivity {
     super.onCreate(savedInstanceState);
     // Edge-to-edge: WebView usa a tela inteira; insets viram env(safe-area-inset-*) no front.
     WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+    applyImmersiveSystemUi();
     applyWebViewPerformanceTuning();
+  }
+
+  @Override
+  public void onResume() {
+    super.onResume();
+    applyImmersiveSystemUi();
+  }
+
+  @Override
+  public void onWindowFocusChanged(boolean hasFocus) {
+    super.onWindowFocusChanged(hasFocus);
+    if (hasFocus) {
+      applyImmersiveSystemUi();
+    }
+  }
+
+  /**
+   * Esconde status bar e navigation bar (sticky immersive). Reaplica após diálogos do SO ou
+   * quando o plugin StatusBar roda, para manter tela cheia em landscape.
+   */
+  private void applyImmersiveSystemUi() {
+    WindowInsetsControllerCompat c =
+        WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+    c.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+    c.hide(WindowInsetsCompat.Type.statusBars() | WindowInsetsCompat.Type.navigationBars());
   }
 
   private void applyWebViewPerformanceTuning() {

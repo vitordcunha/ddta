@@ -25,7 +25,10 @@ const config: CapacitorConfig = {
     },
     StatusBar: {
       style: 'DARK',
-      /** Conteúdo sob a status bar onde o plugin suporta; alinhado a `initCapacitorShell`. */
+      /**
+       * Conteúdo sob a status bar onde o plugin suporta; alinhado a `initCapacitorShell`.
+       * Barras ficam ocultas no Android via imersivo em `MainActivity` (reaplica em onResume).
+       */
       overlaysWebView: true,
     },
     Keyboard: {
