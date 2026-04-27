@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Minimize2, X } from "lucide-react";
 import { Button } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { useIsMobile } from "@/hooks/useBreakpoint";
 
 export type PlannerExpandedTabId =
   | "mission"
@@ -46,7 +46,7 @@ export function FlightPlannerExpandedModal({
   calibration,
   exportContent,
 }: FlightPlannerExpandedModalProps) {
-  const narrowPortrait = useMediaQuery("(max-width: 767px)");
+  const narrowPortrait = useIsMobile();
   const tabBody =
     activeTab === "mission"
       ? mission

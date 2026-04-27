@@ -100,7 +100,10 @@ export function buildGoogleWorkspaceClassicMapOptions(opts: {
     fullscreenControl: true,
     fullscreenControlOptions: cp ? { position: cp.LEFT_BOTTOM } : undefined,
     scaleControl: true,
-    scaleControlOptions: cp ? { position: cp.BOTTOM_LEFT } : undefined,
+    // @types/google.maps só declara `style` em ScaleControlOptions; a API JS ainda aceita `position`.
+    scaleControlOptions: cp
+      ? ({ position: cp.BOTTOM_LEFT } as google.maps.ScaleControlOptions)
+      : undefined,
     rotateControl: mode === '3d',
     rotateControlOptions:
       mode === '3d' && cp ? { position: cp.LEFT_CENTER } : undefined,

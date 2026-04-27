@@ -2,6 +2,38 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Durações de motion (espelham app/src/lib/motionTokens.ts); @property permite interpolar em animações. */
+@property --dd-motion-duration-micro {
+  syntax: "<time>";
+  inherits: true;
+  initial-value: 80ms;
+}
+@property --dd-motion-duration-fast {
+  syntax: "<time>";
+  inherits: true;
+  initial-value: 160ms;
+}
+@property --dd-motion-duration-base {
+  syntax: "<time>";
+  inherits: true;
+  initial-value: 240ms;
+}
+@property --dd-motion-duration-slow {
+  syntax: "<time>";
+  inherits: true;
+  initial-value: 380ms;
+}
+@property --dd-motion-duration-enter {
+  syntax: "<time>";
+  inherits: true;
+  initial-value: 480ms;
+}
+@property --dd-motion-duration-route {
+  syntax: "<time>";
+  inherits: true;
+  initial-value: 920ms;
+}
+
 :root {
   /* Faixa fixa à direita (FAB do painel ~3rem + respiro) — painel do workspace fica à esquerda disso. */
   --workspace-edge-controls-gap: 3.5rem;
@@ -12,6 +44,8 @@
   --border-muted: #242424;
   --brand-green: #3ecf8e;
   --brand-green-link: #00c573;
+  --dd-motion-ease-standard: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --dd-motion-ease-bounce: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 html,
@@ -85,13 +119,13 @@ body {
 }
 
 .plan-wp-mission-icon .plan-wp-mission-inner.dd-wp-entra {
-  animation: dd-wp-entra 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: dd-wp-entra var(--dd-motion-duration-enter) var(--dd-motion-ease-bounce) both;
   will-change: transform, opacity;
 }
 
 /* Arrasto de waypoint: escala suave ao segurar */
 .plan-wp-mission-icon .plan-wp-mission-inner.dd-wp-dragging {
-  animation: dd-wp-drag-start 160ms cubic-bezier(0.2, 0, 0.3, 1) forwards;
+  animation: dd-wp-drag-start var(--dd-motion-duration-fast) cubic-bezier(0.2, 0, 0.3, 1) forwards;
   filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.55));
   will-change: transform, filter;
   z-index: 1000;
@@ -99,7 +133,7 @@ body {
 
 /* Spring de volta ao soltar */
 .plan-wp-mission-icon .plan-wp-mission-inner.dd-wp-drag-settle {
-  animation: dd-wp-drag-settle 380ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation: dd-wp-drag-settle var(--dd-motion-duration-slow) cubic-bezier(0.34, 1.56, 0.64, 1) both;
   will-change: transform;
 }
 

@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { SESSION_STABLE } from '@/lib/queryClient'
 import { http } from '@/services/http'
 import type { ApiDroneModel } from '@/features/flight-planner/types/droneModelApi'
 
@@ -13,6 +14,6 @@ export function useDroneModelsQuery() {
   return useQuery({
     queryKey: droneModelsQueryKey,
     queryFn: fetchDroneModels,
-    staleTime: 5 * 60_000,
+    ...SESSION_STABLE,
   })
 }

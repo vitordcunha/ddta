@@ -18,6 +18,7 @@ import { extractCompletedStats } from "@/features/results/utils/extractCompleted
 import { ProjectPurgeModal } from "@/features/projects/components/ProjectPurgeModal";
 import { useProjects } from "@/features/projects/hooks/useProjects";
 import { SparseCloudViewer } from "@/features/sparse-cloud";
+import { PROJECT_DATA } from "@/lib/queryClient";
 import { projectsService } from "@/services/projectsService";
 import { MapRouteDeckVisibilityToggles } from "@/features/map-engine/components/MapRouteDeckVisibilityToggles";
 
@@ -36,6 +37,7 @@ export function ResultsWorkspacePanel({
     queryKey: ["project", projectId],
     queryFn: () => projectsService.getById(projectId),
     enabled: Boolean(projectId),
+    ...PROJECT_DATA,
   });
 
   const project = projectDetail ?? listProject;

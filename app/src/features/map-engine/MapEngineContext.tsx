@@ -19,6 +19,7 @@ import {
   detectDeviceTier,
   type DeviceTier,
 } from "@/features/map-engine/utils/detectDeviceTier";
+import { GestureManager } from "@/features/map-engine/gestures/GestureManager";
 
 const LS_PREFS = "map-engine:preferences";
 
@@ -27,18 +28,18 @@ const LS_PREFS = "map-engine:preferences";
  * Cada provider registra sua implementação via `registerMapApi`.
  */
 export type MapImperativeApi = {
-  getCenter: () => [number, number]
-  disablePan: () => void
-  enablePan: () => void
+  getCenter: () => [number, number];
+  disablePan: () => void;
+  enablePan: () => void;
   /** Desabilita gestos que conflitam com modo desenho (rotate/tilt em 2 dedos). */
-  disableDrawConflictGestures: () => void
-  enableDrawConflictGestures: () => void
+  disableDrawConflictGestures: () => void;
+  enableDrawConflictGestures: () => void;
   /** Reset do bearing (norte). */
-  setBearing: (bearing: number) => void
+  setBearing: (bearing: number) => void;
   /** Altera pitch em `delta` graus, respeitando min/max do provider. */
-  changePitch: (delta: number) => void
+  changePitch: (delta: number) => void;
   /** Zoom in (delta > 0) ou zoom out (delta < 0). */
-  changeZoom: (delta: number) => void
+  changeZoom: (delta: number) => void;
   /**
    * Encaixa o view ao retangulo `[[south, west], [north, east]]` (lat, lng) — formato Leaflet/resultados.
    * Opcional em provedores; se nao houver, o call e ignorado.
@@ -46,8 +47,8 @@ export type MapImperativeApi = {
   fitBounds: (
     bounds: [[number, number], [number, number]],
     padding?: number,
-  ) => void
-}
+  ) => void;
+};
 
 type StoredPrefs = {
   provider?: MapProvider;
@@ -112,7 +113,11 @@ export type MapEngineContextValue = MapEngineState & {
   setBearing: (bearing: number) => void;
   changePitch: (delta: number) => void;
   changeZoom: (delta: number) => void;
-  fitMapBounds: (bounds: [[number, number], [number, number]], padding?: number) => void;
+  fitMapBounds: (
+    bounds: [[number, number], [number, number]],
+    padding?: number,
+  ) => void;
+  gestureManager: GestureManager;
 };
 
 export const MapEngineContext = createContext<MapEngineContextValue | null>(
@@ -161,6 +166,8 @@ export function MapEngineProvider({ children }: { children: ReactNode }) {
   const [google3dPreference, setGoogle3dPreferenceState] = useState<
     "immersive" | "classic" | null
   >(stored.google3dPreference ?? null);
+
+  const gestureManager = useMemo(() => new GestureManager(), []);
 
   const setGoogle3dPreference = useCallback(
     (p: "immersive" | "classic" | null) => {
@@ -321,6 +328,7 @@ export function MapEngineProvider({ children }: { children: ReactNode }) {
       changePitch,
       changeZoom,
       fitMapBounds,
+      gestureManager,
     }),
     [
       provider,
@@ -346,6 +354,7 @@ export function MapEngineProvider({ children }: { children: ReactNode }) {
       changePitch,
       changeZoom,
       fitMapBounds,
+      gestureManager,
     ],
   );
 

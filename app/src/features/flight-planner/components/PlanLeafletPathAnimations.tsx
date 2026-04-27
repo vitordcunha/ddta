@@ -15,6 +15,7 @@ import {
   runPolylineDrawReveal,
   runPolylineFadeOut,
 } from "@/features/flight-planner/map/planMapLeafletPathEffects";
+import { motion } from "@/lib/motionTokens";
 
 function hashPolylinePositions(
   positions: PolylineProps["positions"] | undefined,
@@ -34,13 +35,13 @@ function hashPolylinePositions(
     .join("|");
 }
 
-const POLYGON_FADE_MS = 480;
-const ROUTE_DRAW_MS = 920;
-const STRIP_DRAW_MS = 520;
+const POLYGON_FADE_MS = motion.duration.enter;
+const ROUTE_DRAW_MS = motion.duration.route;
+const STRIP_DRAW_MS = motion.duration.strip;
 /** Duração máxima total do stagger de strips (ms). Proporcionalmente distribuída entre 0..N-1. */
-const STRIP_STAGGER_TOTAL_MS = 420;
+const STRIP_STAGGER_TOTAL_MS = motion.duration.stripStaggerTotal;
 /** Mínimo de delay para o stagger não parecer instantâneo em strips poucas. */
-const STRIP_STAGGER_MIN_STEP_MS = 28;
+const STRIP_STAGGER_MIN_STEP_MS = motion.duration.stripStaggerMin;
 
 /** Atraso proporcional para um strip de índice `i` de um total de `total`. */
 function stripStaggerDelay(i: number, total: number, reduced: boolean): number {
@@ -308,7 +309,7 @@ export function StripPolylineAnimated({
       if (!el || el.tagName.toLowerCase() !== "path") return;
       cleanupRef.current?.();
       cleanupRef.current = runPolylineFadeOut(el as SVGPathElement, {
-        durationMs: 210,
+        durationMs: motion.duration.stripFadeOut,
         reduced,
       });
     };
@@ -373,10 +374,10 @@ export function StripPolylineAnimated({
 // ─────────────────────────────────────────────────────────────────
 
 /** Atraso antes de iniciar a linha de varredura (ms); aguarda strips animarem. */
-const SWEEP_START_DELAY_MS = 600;
-const SWEEP_DRAW_MS = 560;
-const SWEEP_HOLD_MS = 120;
-const SWEEP_FADE_MS = 380;
+const SWEEP_START_DELAY_MS = motion.duration.sweepStart;
+const SWEEP_DRAW_MS = motion.duration.sweepDraw;
+const SWEEP_HOLD_MS = motion.duration.sweepHold;
+const SWEEP_FADE_MS = motion.duration.sweepFade;
 
 type SweepScanLineProps = {
   /** Posições [lat, lng] conectando os centros dos strips — caminho de varredura. */

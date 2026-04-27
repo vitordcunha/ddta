@@ -1,8 +1,11 @@
 import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, Plus } from "lucide-react";
 import * as Popover from "@radix-ui/react-popover";
 import { useSearchParams } from "react-router-dom";
+import { PROJECT_DATA } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
+import { projectsService } from "@/services/projectsService";
 
 type ProjectOption = { id: string; name: string };
 
@@ -16,6 +19,7 @@ export function WorkspaceProjectPicker({
   projectId,
 }: WorkspaceProjectPickerProps) {
   const [, setSearchParams] = useSearchParams();
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
 
@@ -37,6 +41,13 @@ export function WorkspaceProjectPicker({
   }, [projects, query]);
 
   const setProject = (id: string) => {
+    if (id) {
+      void queryClient.prefetchQuery({
+        queryKey: ["project", id],
+        queryFn: () => projectsService.getById(id),
+        ...PROJECT_DATA,
+      });
+    }
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);

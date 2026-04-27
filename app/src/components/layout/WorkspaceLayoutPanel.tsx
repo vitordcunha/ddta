@@ -12,7 +12,7 @@ import {
   PanelRightClose,
   PanelRightOpen,
 } from "lucide-react";
-import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { useIsDesktop } from "@/hooks/useBreakpoint";
 import {
   layoutMobileHeaderClass,
   layoutMobileSheetShellClass,
@@ -27,8 +27,6 @@ import {
   workspacePanelFabTransition,
   workspacePanelTransition,
 } from "./workspacePanelMotion";
-
-const DESKTOP = "(min-width: 1024px)";
 
 type PanelState = { show: boolean; layoutHold: boolean };
 
@@ -63,8 +61,8 @@ type WorkspaceLayoutPanelProps = {
 };
 
 /**
- * &lt; lg: painel no fundo, bottom sheet, recolher.
- * >= lg: coluna à direita com aba de recolher.
+ * Mobile/tablet: painel no fundo, bottom sheet, recolher.
+ * Desktop (min-width 1280px): coluna à direita com aba de recolher.
  *
  * Desktop: `children` permanece montado ao recolher (evita remontar o planejador) e o slide
  * usa só transform (sem animar `max-width` em paralelo). Mobile mantém AnimatePresence
@@ -77,7 +75,7 @@ export function WorkspaceLayoutPanel({
   transitionPending = false,
 }: WorkspaceLayoutPanelProps) {
   const deviceTier = useDeviceTier();
-  const isDesktop = useMediaQuery(DESKTOP);
+  const isDesktop = useIsDesktop();
   const prefersReducedMotion = useReducedMotion();
   const reduced = Boolean(prefersReducedMotion);
   const panelTransition = workspacePanelTransition(prefersReducedMotion);

@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { USER_DATA } from '@/lib/queryClient'
 import {
   clearFlightPlanDraft,
   clearSessionSkipHydrateFromSavedPlan,
@@ -24,6 +25,7 @@ export function useProjects(): UseProjectsReturn {
   const { data: projects = [], isLoading } = useQuery({
     queryKey: ['projects'],
     queryFn: projectsService.getAll,
+    ...USER_DATA,
   })
 
   const createMutation = useMutation({
@@ -37,10 +39,21 @@ export function useProjects(): UseProjectsReturn {
     },
   })
 
+  const mergeProjectIntoListCache = (project: Project) => {
+    queryClient.setQueryData<Project[]>(['projects'], (old) => {
+      if (!old) return [project]
+      const next = old.map((p) => (p.id === project.id ? project : p))
+      return next.sort(
+        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      )
+    })
+  }
+
   const updateMutation = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Partial<Project> }) => projectsService.update(id, payload),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['projects'] })
+    onSuccess: (data) => {
+      mergeProjectIntoListCache(data)
+      void queryClient.invalidateQueries({ queryKey: ['project', data.id] })
       toast.success('Projeto atualizado.')
     },
     onError: () => {
@@ -50,8 +63,9 @@ export function useProjects(): UseProjectsReturn {
 
   const saveFlightPlanMutation = useMutation({
     mutationFn: ({ id, plan }: { id: string; plan: PersistedFlightPlan }) => projectsService.saveFlightPlan(id, plan),
-    onSuccess: (_data, { id }) => {
-      void queryClient.invalidateQueries({ queryKey: ['projects'] })
+    onSuccess: (data, { id }) => {
+      mergeProjectIntoListCache(data)
+      void queryClient.invalidateQueries({ queryKey: ['project', id] })
       clearFlightPlanDraft(id)
       clearSessionSkipHydrateFromSavedPlan(id)
       toast.success('Plano de voo salvo no servidor.')
@@ -64,6 +78,7 @@ export function useProjects(): UseProjectsReturn {
   const deleteMutation = useMutation({
     mutationFn: projectsService.remove,
     onSuccess: (_void, id) => {
+      queryClient.removeQueries({ queryKey: ['project', id] })
       void queryClient.invalidateQueries({ queryKey: ['projects'] })
       clearFlightPlanDraft(id)
       clearSessionSkipHydrateFromSavedPlan(id)

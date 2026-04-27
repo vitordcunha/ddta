@@ -1,10 +1,8 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import type { KeyboardEvent, ReactNode } from "react";
-import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { useIsDesktop } from "@/hooks/useBreakpoint";
 import { cn } from "@/lib/utils";
-
-const DESKTOP = "(min-width: 1024px)";
 
 export type DialogPanelProps = {
   open: boolean;
@@ -40,7 +38,7 @@ export function DialogPanel({
   ariaDescribedBy,
   onContentKeyDown,
 }: DialogPanelProps) {
-  const isDesktop = useMediaQuery(DESKTOP);
+  const isDesktop = useIsDesktop();
   const zOverlay = zBase;
   const zContent = zBase + 1;
 

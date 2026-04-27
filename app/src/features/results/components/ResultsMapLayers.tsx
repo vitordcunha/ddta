@@ -17,6 +17,7 @@ import { getSparseCloudMaxPoints } from "@/features/map-engine/utils/getSparseCl
 import { useResultsViewStore } from "@/features/results/stores/useResultsViewStore";
 import { lineStringCoordinates3d } from "@/features/map-engine/layers/RealFlightPathLayer";
 import { projectHasFullOrthophoto } from "@/features/results/utils/orthophotoAssets";
+import { PROJECT_DATA } from "@/lib/queryClient";
 import { projectsService } from "@/services/projectsService";
 import "leaflet/dist/leaflet.css";
 
@@ -68,6 +69,7 @@ export function ResultsMapInnerLayers({
     queryKey: ["project", projectId],
     queryFn: () => projectsService.getById(projectId!),
     enabled: Boolean(projectId),
+    ...PROJECT_DATA,
   });
 
   const { deviceTier, mode, provider } = useMapEngine();
