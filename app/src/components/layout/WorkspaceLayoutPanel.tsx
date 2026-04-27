@@ -1,4 +1,10 @@
-import { type ReactNode, useCallback, useReducer } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useLayoutEffect,
+  useReducer,
+  useRef,
+} from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   ChevronDown,
@@ -7,6 +13,13 @@ import {
   PanelRightOpen,
 } from "lucide-react";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
+import {
+  layoutMobileHeaderClass,
+  layoutMobileSheetShellClass,
+  layoutPanelCollapseClass,
+  layoutPanelFabClass,
+  useDeviceTier,
+} from "@/lib/deviceUtils";
 import { cn } from "@/lib/utils";
 import {
   desktopFabSlide,
@@ -47,17 +60,25 @@ type WorkspaceLayoutPanelProps = {
   collapsedLabel: string;
   /** Notifica o layout pai (ex.: largura do mapa, pointer-events da camada). */
   onOpenChange?: (open: boolean) => void;
+  /** `useTransition` (painel a abrir-fechar) — feedback sutil. */
+  transitionPending?: boolean;
 };
 
 /**
  * &lt; lg: painel no fundo, bottom sheet, recolher.
  * >= lg: coluna à direita com aba de recolher.
+ *
+ * Desktop: `children` permanece montado ao recolher (evita remontar o planejador) e o slide
+ * usa só transform (sem animar `max-width` em paralelo). Mobile mantém AnimatePresence
+ * porque o sheet é in-flow com altura máxima.
  */
 export function WorkspaceLayoutPanel({
   children,
   collapsedLabel,
   onOpenChange,
+  transitionPending = false,
 }: WorkspaceLayoutPanelProps) {
+  const deviceTier = useDeviceTier();
   const isDesktop = useMediaQuery(DESKTOP);
   const prefersReducedMotion = useReducedMotion();
   const reduced = Boolean(prefersReducedMotion);
@@ -68,6 +89,25 @@ export function WorkspaceLayoutPanel({
   const { show, layoutHold } = state;
   const layoutOpen = show || layoutHold;
 
+  const stateRef = useRef(state);
+  useLayoutEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  const onDesktopSlideAnimationComplete = useCallback(() => {
+    const { show: s, layoutHold: lh } = stateRef.current;
+    if (!s && lh) {
+      dispatch({ type: "exitDone" });
+      onOpenChange?.(false);
+    }
+  }, [onOpenChange]);
+
+  const onMobileExitComplete = useCallback(() => {
+    if (!stateRef.current.layoutHold) return;
+    dispatch({ type: "exitDone" });
+    onOpenChange?.(false);
+  }, [onOpenChange]);
+
   const onToggle = useCallback(() => {
     if (show) {
       dispatch({ type: "closeStart" });
@@ -77,56 +117,54 @@ export function WorkspaceLayoutPanel({
     dispatch({ type: "open" });
   }, [show, onOpenChange]);
 
-  const onPanelExitComplete = useCallback(() => {
-    if (!layoutHold) return;
-    dispatch({ type: "exitDone" });
-    onOpenChange?.(false);
-  }, [layoutHold, onOpenChange]);
-
   if (isDesktop) {
     return (
       <div
         className={cn(
           "flex h-full min-h-0 w-full min-w-0 max-w-full flex-1 flex-col [overscroll-behavior:contain]",
           "pr-[max(0.5rem,env(safe-area-inset-right))]",
-          "transition-[max-width] duration-200 ease-out motion-reduce:transition-none",
           !layoutOpen &&
             "max-w-0 flex-none overflow-hidden p-0 pr-0 pointer-events-none",
+          transitionPending &&
+            "opacity-90 transition-opacity duration-150 motion-reduce:transition-none",
         )}
         onPointerDownCapture={
           layoutOpen ? (e) => e.stopPropagation() : undefined
         }
       >
-        <AnimatePresence onExitComplete={onPanelExitComplete}>
-          {show ? (
-            <motion.div
-              key="workspace-desktop-panel"
-              role="region"
-              aria-label="Painel do workspace"
-              className="flex h-full min-h-0 w-full min-w-0 flex-col"
-              variants={desktopPanelSlide}
-              initial="initial"
-              animate="animate"
-              exit="exit"
-              custom={reduced}
-              transition={panelTransition}
+        <motion.div
+          key="workspace-desktop-panel"
+          role="region"
+          aria-label="Painel do workspace"
+          aria-hidden={!show}
+          className="panel-animated flex h-full min-h-0 w-full min-w-0 flex-col"
+          variants={desktopPanelSlide}
+          initial={false}
+          animate={show ? "animate" : "exit"}
+          custom={reduced}
+          transition={panelTransition}
+          onAnimationComplete={onDesktopSlideAnimationComplete}
+          style={{
+            pointerEvents: show && layoutOpen ? "auto" : "none",
+          }}
+        >
+          <div className="flex h-9 shrink-0 items-center justify-end pr-0.5">
+            <button
+              type="button"
+              onClick={onToggle}
+              className={cn(
+                layoutPanelCollapseClass(deviceTier),
+                "hover:text-white",
+              )}
+              title="Recolher painel"
             >
-              <div className="flex h-9 shrink-0 items-center justify-end pr-0.5">
-                <button
-                  type="button"
-                  onClick={onToggle}
-                  className="touch-target touch-manipulation flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/10 bg-[#171717]/90 text-[#b4b4b4] shadow-sm backdrop-blur-sm hover:text-white"
-                  title="Recolher painel"
-                >
-                  <PanelRightClose className="size-5" />
-                </button>
-              </div>
-              <div className="min-h-0 w-full min-w-0 flex-1 overflow-x-hidden [overscroll-behavior:contain]">
-                {children}
-              </div>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
+              <PanelRightClose className="size-5" />
+            </button>
+          </div>
+          <div className="panel-container min-h-0 w-full min-w-0 flex-1 overflow-x-hidden [overscroll-behavior:contain]">
+            {children}
+          </div>
+        </motion.div>
 
         <AnimatePresence>
           {!show && !layoutHold ? (
@@ -141,7 +179,7 @@ export function WorkspaceLayoutPanel({
               exit="exit"
               custom={reduced}
               transition={fabTransition}
-              className="touch-target touch-manipulation pointer-events-auto fixed right-0 top-1/2 z-[100] flex min-h-14 w-12 shrink-0 -translate-y-1/2 flex-col items-center justify-center gap-0.5 rounded-l-xl border border-r-0 border-white/10 bg-[#171717]/95 py-1.5 text-xs font-medium text-[#e8e8e8] shadow-lg backdrop-blur-md"
+              className={layoutPanelFabClass(deviceTier)}
             >
               <PanelRightOpen className="size-5 shrink-0" />
             </motion.button>
@@ -153,7 +191,11 @@ export function WorkspaceLayoutPanel({
 
   return (
     <div
-      className="w-full min-w-0 [overscroll-behavior:contain]"
+      className={cn(
+        "w-full min-w-0 [overscroll-behavior:contain]",
+        transitionPending &&
+          "opacity-90 transition-opacity duration-150 motion-reduce:transition-none",
+      )}
       style={{
         paddingLeft: "max(0.5rem, env(safe-area-inset-left, 0px))",
         paddingRight: "max(0.5rem, env(safe-area-inset-right, 0px))",
@@ -161,16 +203,16 @@ export function WorkspaceLayoutPanel({
       }}
     >
       {/*
-        Durante o fecho, `layoutHold` fica true: mostramos `null` para nao montar a barra
-        enquanto o sheet ainda faz exit no AnimatePresence (evita saltar o estado).
+        Mobile mantém AnimatePresence: sheet in-flow + altura máxima; “sempre montado”
+        quebraria o layout da coluna inferior.
       */}
-      <AnimatePresence mode="wait" onExitComplete={onPanelExitComplete}>
+      <AnimatePresence mode="wait" onExitComplete={onMobileExitComplete}>
         {show ? (
           <motion.div
             key="workspace-mobile-sheet"
             role="region"
             aria-label="Painel do workspace"
-            className="pointer-events-auto flex max-h-[min(52svh,560px)] min-h-0 w-full flex-col overflow-hidden rounded-t-2xl border border-b-0 border-white/10 bg-[#0a0a0a]/[0.25] shadow-[0_-4px_32px_rgba(0,0,0,0.45)] backdrop-blur-sm"
+            className={layoutMobileSheetShellClass(deviceTier)}
             variants={mobileSheetSlide}
             initial="initial"
             animate="animate"
@@ -192,7 +234,7 @@ export function WorkspaceLayoutPanel({
                 <ChevronDown className="size-4" />
               </button>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain [scrollbar-gutter:stable]">
+            <div className="panel-container min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain [scrollbar-gutter:stable]">
               {children}
             </div>
           </motion.div>
@@ -207,7 +249,7 @@ export function WorkspaceLayoutPanel({
             exit="exit"
             custom={reduced}
             transition={fabTransition}
-            className="touch-target touch-manipulation pointer-events-auto flex min-h-12 w-full shrink-0 items-center justify-between gap-2 rounded-t-2xl border border-b-0 border-white/10 bg-[#171717]/95 px-4 text-left text-sm font-medium text-[#fafafa] shadow-[0_-4px_24px_rgba(0,0,0,0.35)] backdrop-blur-md"
+            className={layoutMobileHeaderClass(deviceTier)}
           >
             <span className="min-w-0 flex-1 truncate">{collapsedLabel}</span>
             <ChevronUp className="size-5 shrink-0 text-[#3ecf8e]" />

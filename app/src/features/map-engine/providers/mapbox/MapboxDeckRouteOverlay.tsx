@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { DeckGLOverlay } from '@/features/map-engine/providers/mapbox/DeckGLOverlay'
 import { useDroneRouteLayers } from '@/features/map-engine/layers/useDroneRouteLayers'
@@ -83,6 +83,13 @@ export function MapboxDeckRouteOverlay({
     return out
   }, [baseLayers, realFlightLayer])
 
+  const onWaypointPickMiss = useCallback(() => {
+    const st = useFlightStore.getState()
+    if (st.poiPlacementActive) return
+    if (st.plannerInteractionMode !== 'navigate') return
+    if (st.selectedWaypointId) st.setSelectedWaypoint(null)
+  }, [])
+
   if (!enabled || !map || layers.length === 0) return null
 
   return (
@@ -90,6 +97,7 @@ export function MapboxDeckRouteOverlay({
       map={map}
       layers={layers}
       onWaypointClick={setSelectedWaypoint}
+      onWaypointPickMiss={onWaypointPickMiss}
     />
   )
 }

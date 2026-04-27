@@ -1,4 +1,6 @@
-import * as turf from '@turf/turf'
+import bearing from '@turf/bearing'
+import distance from '@turf/distance'
+import { point } from '@turf/helpers'
 import type { PointOfInterest } from '@/features/flight-planner/types/poi'
 import type { Waypoint } from '@/features/flight-planner/types/waypoint'
 
@@ -20,12 +22,12 @@ export function headingAndGimbalTowardPoi(
   waypoint: Waypoint,
   poi: PointOfInterest,
 ): { heading: number; gimbalPitch: number } {
-  const from = turf.point([waypoint.lng, waypoint.lat])
-  const to = turf.point([poi.lng, poi.lat])
-  let heading = turf.bearing(from, to)
+  const from = point([waypoint.lng, waypoint.lat])
+  const to = point([poi.lng, poi.lat])
+  let heading = bearing(from, to)
   heading = ((heading % 360) + 360) % 360
 
-  const horizM = turf.distance(from, to, { units: 'meters' })
+  const horizM = distance(from, to, { units: 'meters' })
   const wpAmsl = waypointAmslMeters(waypoint)
   const deltaAlt = poi.altitude - wpAmsl
   let gimbalPitch = -90

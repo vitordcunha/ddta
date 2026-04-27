@@ -1,5 +1,7 @@
 import { useMemo } from 'react'
-import * as turf from '@turf/turf'
+import turfArea from '@turf/area'
+import { lineString, polygon } from '@turf/helpers'
+import length from '@turf/length'
 import { useResultsViewStore } from '@/features/results/stores/useResultsViewStore'
 
 export function useResultsMapMeasurements() {
@@ -10,10 +12,10 @@ export function useResultsMapMeasurements() {
   return useMemo(() => {
     let distanceResult: string | null = null
     if (distancePoints.length >= 2) {
-      const line = turf.lineString(
+      const line = lineString(
         distancePoints.map(([lat, lon]) => [lon, lat]),
       )
-      const km = turf.length(line, { units: 'kilometers' })
+      const km = length(line, { units: 'kilometers' })
       distanceResult =
         km >= 1
           ? `${km.toFixed(3).replace('.', ',')} km`
@@ -22,8 +24,8 @@ export function useResultsMapMeasurements() {
     let areaResult: string | null = null
     if (areaPoints.length > 2) {
       const ring = [...areaPoints, areaPoints[0]!].map(([lat, lon]) => [lon, lat])
-      const poly = turf.polygon([ring])
-      const m2 = turf.area(poly)
+      const poly = polygon([ring])
+      const m2 = turfArea(poly)
       const ha = m2 / 10000
       areaResult = `${m2.toFixed(1).replace('.', ',')} m2 (${ha.toFixed(2).replace('.', ',')} ha)`
     }

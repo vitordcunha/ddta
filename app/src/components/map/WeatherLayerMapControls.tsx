@@ -10,6 +10,7 @@ import {
   X,
 } from "lucide-react";
 import { toWorkspace } from "@/constants/routes";
+import { glassSurfaceClass, maybeBackdropBlur, useDeviceTier } from "@/lib/deviceUtils";
 import { cn } from "@/lib/utils";
 import {
   DEFAULT_WEATHER_MAP_OVERLAY,
@@ -72,7 +73,7 @@ export type WeatherLayerPlacement =
   | "sidebar";
 
 type WeatherLayerMapControlsProps = {
-  /** planToolbarStack: acima da toolbar do planeador (z-index do workspace). mapBottomLeft: canto do mapa. */
+  /** planToolbarStack: fluxo na toolbar. mapBottomLeft: canto do mapa (pai posiciona o stack). */
   placement: WeatherLayerPlacement;
   overlay: WeatherMapOverlayPreferences;
   setOverlay: (
@@ -93,6 +94,7 @@ export function WeatherLayerMapControls({
   radarStatus,
   radarMessage,
 }: WeatherLayerMapControlsProps) {
+  const deviceTier = useDeviceTier();
   const panelId = useId();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -139,22 +141,21 @@ export function WeatherLayerMapControls({
     (radarPhase === "loading" || radarPhase === "idle");
   const radarFailed = overlay.layerId === "radar" && radarPhase === "error";
 
+  /** `absolute` é obrigatório: sem isso, top/left/bottom não aplicam e o painel fica no fluxo (ex.: coluna `w-12` da sidebar). */
   const panelPositionClass =
     placement === "planToolbarStack"
-      ? "top-full left-0 z-[50] mt-2 max-h-[min(28rem,calc(100dvh-9rem))] w-[min(19rem,calc(100vw-2rem-max(1rem,env(safe-area-inset-left,0px))-max(1rem,env(safe-area-inset-right,0px))))] origin-top-left"
+      ? "absolute top-full left-0 z-[50] mt-2 max-h-[min(28rem,calc(100dvh-9rem))] w-[min(19rem,calc(100vw-2rem-max(1rem,env(safe-area-inset-left,0px))-max(1rem,env(safe-area-inset-right,0px))))] origin-top-left"
       : placement === "sidebar"
-        ? "top-0 left-full z-[50] ml-2 max-h-[min(28rem,calc(100dvh-8rem))] w-[min(19rem,calc(100vw-4rem))] origin-top-left"
+        ? "absolute top-0 left-full z-[50] ml-2 max-h-[min(28rem,calc(100dvh-8rem))] w-[min(19rem,calc(100vw-4rem))] origin-top-left"
         : cn(
-            "bottom-0 left-full z-[50] ml-2 max-h-[min(28rem,calc(100dvh-8rem))] w-[min(19rem,calc(100vw-3.5rem))] origin-bottom-left",
+            "absolute bottom-0 left-full z-[50] ml-2 max-h-[min(28rem,calc(100dvh-8rem))] w-[min(19rem,calc(100vw-3.5rem))] origin-bottom-left",
             "max-sm:bottom-full max-sm:left-0 max-sm:mb-2 max-sm:ml-0",
           );
 
   return (
     <div
       ref={rootRef}
-      className={cn(
-        "pointer-events-auto absolute left-0 bottom-[200px] w-12 shrink-0",
-      )}
+      className="pointer-events-auto relative w-12 shrink-0"
     >
       {open ? (
         <div
@@ -162,7 +163,8 @@ export function WeatherLayerMapControls({
           role="dialog"
           aria-label="Camada meteorologica no mapa"
           className={cn(
-            "glass-surface animate-fade-in overflow-y-auto rounded-2xl p-3.5 shadow-xl",
+            glassSurfaceClass(deviceTier),
+            "animate-fade-in overflow-y-auto rounded-2xl p-3.5 shadow-xl",
             panelPositionClass,
           )}
         >
@@ -310,7 +312,9 @@ export function WeatherLayerMapControls({
       <button
         type="button"
         className={cn(
-          "touch-target relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl border border-white/15 bg-[#121212]/90 text-[#e8e8e8] shadow-lg backdrop-blur-md transition",
+          "touch-target relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl border border-white/15 text-[#e8e8e8] shadow-lg transition",
+          deviceTier === "high" ? "bg-[#121212]/90" : "bg-[#141414]/98",
+          maybeBackdropBlur(deviceTier, "md"),
           "hover:border-white/25 hover:bg-[#1a1a1a]/95 active:bg-white/10",
           active && "border-sky-400/40 ring-2 ring-sky-500/25",
         )}

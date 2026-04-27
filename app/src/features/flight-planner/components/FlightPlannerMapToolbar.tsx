@@ -1,4 +1,5 @@
 import { Hand, Map as MapIcon, Pencil, Pentagon, Undo2, Trash2 } from "lucide-react"
+import { useSearchParams } from "react-router-dom"
 import { Button } from "@/components/ui"
 import { cn } from "@/lib/utils"
 import { FlightPlannerModeHint } from "@/features/flight-planner/components/FlightPlannerModeHint"
@@ -11,6 +12,7 @@ import {
 import { useFlightStore } from "@/features/flight-planner/stores/useFlightStore"
 import type { PlannerInteractionMode } from "@/features/flight-planner/stores/useFlightStore"
 import { closeDraftToPolygon } from "@/features/flight-planner/utils/polygonDraft"
+import { discardLocalFlightPlanSession } from "@/features/flight-planner/utils/flightPlanDraftStorage"
 
 const modes: { id: PlannerInteractionMode; label: string; icon: typeof Hand }[] = [
   { id: "navigate", label: "Navegar", icon: Hand },
@@ -19,6 +21,8 @@ const modes: { id: PlannerInteractionMode; label: string; icon: typeof Hand }[] 
 
 export function FlightPlannerMapToolbar() {
   useFlightPlannerMapHotkeys()
+  const [searchParams] = useSearchParams()
+  const projectId = searchParams.get("project")
 
   const draftPoints = useFlightStore((s) => s.draftPoints)
   const setDraftPoints = useFlightStore((s) => s.setDraftPoints)
@@ -38,8 +42,12 @@ export function FlightPlannerMapToolbar() {
   }
 
   const onClear = () => {
-    setDraftPoints([])
-    setPolygon(null)
+    if (projectId) {
+      discardLocalFlightPlanSession(projectId)
+    } else {
+      setDraftPoints([])
+      setPolygon(null)
+    }
   }
 
   return (

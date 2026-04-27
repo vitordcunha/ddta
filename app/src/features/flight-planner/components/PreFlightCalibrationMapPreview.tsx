@@ -1,5 +1,7 @@
 import { useEffect } from "react";
-import * as turf from "@turf/turf";
+import turfBbox from "@turf/bbox";
+import centerOfMass from "@turf/center-of-mass";
+import { featureCollection } from "@turf/helpers";
 import type { Feature, Polygon } from "geojson";
 import {
   MapContainer,
@@ -21,9 +23,9 @@ function FitBounds({
   const map = useMap();
   useEffect(() => {
     const combined = missionOutline
-      ? turf.featureCollection([calibration, missionOutline])
+      ? featureCollection([calibration, missionOutline])
       : calibration;
-    const b = turf.bbox(combined);
+    const b = turfBbox(combined);
     map.invalidateSize();
     map.fitBounds(
       [
@@ -52,7 +54,7 @@ export function PreFlightCalibrationMapPreview({
   calibrationPolygon,
   missionPolygon,
 }: PreFlightCalibrationMapPreviewProps) {
-  const center = turf.centerOfMass(calibrationPolygon).geometry.coordinates;
+  const center = centerOfMass(calibrationPolygon).geometry.coordinates;
   const lat = center[1]!;
   const lon = center[0]!;
   const { url, attribution } = getPlannerBaseLayerConfig(baseLayerId);

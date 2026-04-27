@@ -1,7 +1,10 @@
 import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { clearFlightPlanDraft } from '@/features/flight-planner/utils/flightPlanDraftStorage'
+import {
+  clearFlightPlanDraft,
+  clearSessionSkipHydrateFromSavedPlan,
+} from '@/features/flight-planner/utils/flightPlanDraftStorage'
 import type { PersistedFlightPlan } from '@/features/flight-planner/stores/useFlightStore'
 import { projectsService } from '@/services/projectsService'
 import type { CreateProjectData, Project } from '@/types/project'
@@ -50,6 +53,7 @@ export function useProjects(): UseProjectsReturn {
     onSuccess: (_data, { id }) => {
       void queryClient.invalidateQueries({ queryKey: ['projects'] })
       clearFlightPlanDraft(id)
+      clearSessionSkipHydrateFromSavedPlan(id)
       toast.success('Plano de voo salvo no servidor.')
     },
     onError: () => {
@@ -62,6 +66,7 @@ export function useProjects(): UseProjectsReturn {
     onSuccess: (_void, id) => {
       void queryClient.invalidateQueries({ queryKey: ['projects'] })
       clearFlightPlanDraft(id)
+      clearSessionSkipHydrateFromSavedPlan(id)
       toast.success('Projeto excluido.')
     },
     onError: () => {

@@ -1,66 +1,114 @@
-import { useEffect } from 'react'
-import { MapContainer, useMap } from 'react-leaflet'
-import { MapBottomLeftControls } from '@/components/map/MapBottomLeftControls'
-import { PlannerMapBaseLayer } from '@/components/map/PlannerMapBaseLayer'
-import { FlightPlannerMapContent } from '@/features/flight-planner/components/FlightPlannerMapContent'
-import { ResultsMapInnerLayers } from '@/features/results/components/ResultsMapLayers'
-import type { WorkspacePanelId } from '@/constants/routes'
-import { MapBootstrapView } from '@/components/map/MapBootstrapView'
-import { PlannerWeatherMapLayers } from '@/components/map/PlannerWeatherMapLayers'
-import type { WorkspaceMapWeatherTilesProps } from '@/components/map/useWorkspaceMapWeather'
-import { useGeolocation } from '@/hooks/useGeolocation'
-import { useMapBootstrapFocus } from '@/hooks/useMapBootstrapFocus'
-import { useMapEngine } from '@/features/map-engine/useMapEngine'
-import 'leaflet/dist/leaflet.css'
+import { useEffect } from "react";
+import { MapContainer, useMap } from "react-leaflet";
+import { MapUserLocationLayers } from "@/components/map/MapUserLocation";
+import { PlannerMapBaseLayer } from "@/components/map/PlannerMapBaseLayer";
+import { FlightPlannerMapContent } from "@/features/flight-planner/components/FlightPlannerMapContent";
+import { ResultsMapInnerLayers } from "@/features/results/components/ResultsMapLayers";
+import type { WorkspacePanelId } from "@/constants/routes";
+import { MapBootstrapView } from "@/components/map/MapBootstrapView";
+import { PlannerWeatherMapLayers } from "@/components/map/PlannerWeatherMapLayers";
+import type { WorkspaceMapWeatherTilesProps } from "@/components/map/useWorkspaceMapWeather";
+import { useGeolocationContext } from "@/hooks/GeolocationContext";
+import L from "leaflet";
+import { useMapBootstrapFocus } from "@/hooks/useMapBootstrapFocus";
+import { useMapEngine } from "@/features/map-engine/useMapEngine";
+import "leaflet/dist/leaflet.css";
 
-type LeafletMapViewProps = {
-  panel: WorkspacePanelId
-  projectId: string | null
-  weatherTiles: WorkspaceMapWeatherTilesProps
+/**
+ * Registra a API imperativa do Leaflet no MapEngineContext para que componentes
+ * agnósticos ao provider possam operar o mapa (pan, zoom, gestos).
+ */
+function LeafletMapApiRegistrar() {
+  const map = useMap();
+  const { registerMapApi } = useMapEngine();
+
+  useEffect(() => {
+    registerMapApi({
+      getCenter: () => {
+        const c = map.getCenter();
+        return [c.lat, c.lng];
+      },
+      disablePan: () => map.dragging.disable(),
+      enablePan: () => map.dragging.enable(),
+      // Leaflet não tem rotate/tilt nativo
+      disableDrawConflictGestures: () => {},
+      enableDrawConflictGestures: () => {},
+      setBearing: () => {},
+      changePitch: () => {},
+      changeZoom: (delta) => {
+        if (delta > 0) map.zoomIn();
+        else map.zoomOut();
+      },
+      fitBounds: (bounds, padding = 32) => {
+        const [[south, west], [north, east]] = bounds;
+        const pad = [padding, padding] as L.PointExpression;
+        map.fitBounds(
+          L.latLngBounds(
+            L.latLng(south, west),
+            L.latLng(north, east),
+          ),
+          { padding: pad, maxZoom: 20 },
+        );
+      },
+    });
+    return () => {
+      registerMapApi({});
+    };
+  }, [map, registerMapApi]);
+
+  return null;
 }
 
+type LeafletMapViewProps = {
+  panel: WorkspacePanelId;
+  projectId: string | null;
+  weatherTiles: WorkspaceMapWeatherTilesProps;
+};
+
 function LeafletViewSync() {
-  const map = useMap()
-  const { center, zoom, setCenterZoom } = useMapEngine()
+  const map = useMap();
+  const { center, zoom, setCenterZoom } = useMapEngine();
 
   useEffect(() => {
     const onMoveEnd = () => {
-      const c = map.getCenter()
-      setCenterZoom([c.lat, c.lng], map.getZoom())
-    }
-    map.on('moveend', onMoveEnd)
+      const c = map.getCenter();
+      setCenterZoom([c.lat, c.lng], map.getZoom());
+    };
+    map.on("moveend", onMoveEnd);
     return () => {
-      map.off('moveend', onMoveEnd)
-    }
-  }, [map, setCenterZoom])
+      map.off("moveend", onMoveEnd);
+    };
+  }, [map, setCenterZoom]);
 
   useEffect(() => {
-    const mc = map.getCenter()
-    const z = map.getZoom()
-    const sameLat = Math.abs(mc.lat - center[0]) < 1e-7
-    const sameLng = Math.abs(mc.lng - center[1]) < 1e-7
-    if (sameLat && sameLng && z === zoom) return
-    map.setView(center, zoom, { animate: false })
-  }, [center, zoom, map])
+    const mc = map.getCenter();
+    const z = map.getZoom();
+    const sameLat = Math.abs(mc.lat - center[0]) < 1e-7;
+    const sameLng = Math.abs(mc.lng - center[1]) < 1e-7;
+    if (sameLat && sameLng && z === zoom) return;
+    map.setView(center, zoom, { animate: false });
+  }, [center, zoom, map]);
 
-  return null
+  return null;
 }
 
-export function LeafletMapView({ panel, projectId, weatherTiles }: LeafletMapViewProps) {
-  const showPlan = panel === 'plan' && Boolean(projectId)
-  const showResults = panel === 'results' && Boolean(projectId)
-  const { position, error, phase, locate } = useGeolocation()
-  const bootstrapFocus = useMapBootstrapFocus({ locate })
-  const { center, zoom, setCenterZoom } = useMapEngine()
+export function LeafletMapView({
+  panel,
+  projectId,
+  weatherTiles,
+}: LeafletMapViewProps) {
+  const showPlan = panel === "plan" && Boolean(projectId);
+  const showResults = panel === "results" && Boolean(projectId);
+  const { position, locate } = useGeolocationContext();
+  const bootstrapFocus = useMapBootstrapFocus({ locate });
+  const { center, zoom, setCenterZoom } = useMapEngine();
 
   useEffect(() => {
-    if (!bootstrapFocus) return
-    setCenterZoom(bootstrapFocus.center, bootstrapFocus.zoom)
-  }, [bootstrapFocus, setCenterZoom])
+    if (!bootstrapFocus) return;
+    setCenterZoom(bootstrapFocus.center, bootstrapFocus.zoom);
+  }, [bootstrapFocus, setCenterZoom]);
 
-  const bottomLeftControls = (
-    <MapBottomLeftControls position={position} error={error} phase={phase} locate={locate} />
-  )
+  const userLocationLayers = <MapUserLocationLayers position={position} />;
 
   const weatherTileLayers = (
     <PlannerWeatherMapLayers
@@ -68,7 +116,7 @@ export function LeafletMapView({ panel, projectId, weatherTiles }: LeafletMapVie
       openWeatherApiKey={weatherTiles.openWeatherApiKey}
       onRadarStatus={weatherTiles.onRadarStatus}
     />
-  )
+  );
 
   return (
     <div className="absolute inset-0 z-0 min-h-0 w-full">
@@ -80,23 +128,23 @@ export function LeafletMapView({ panel, projectId, weatherTiles }: LeafletMapVie
         scrollWheelZoom
       >
         <LeafletViewSync />
+        <LeafletMapApiRegistrar />
         <MapBootstrapView focus={bootstrapFocus} />
         {showResults ? (
           <>
             <ResultsMapInnerLayers projectId={projectId} />
+            {userLocationLayers}
             {weatherTileLayers}
-            {bottomLeftControls}
           </>
         ) : (
           <>
             <PlannerMapBaseLayer />
+            {userLocationLayers}
             {weatherTileLayers}
             {showPlan ? <FlightPlannerMapContent /> : null}
-            {/* WindIndicatorOverlay moved to WorkspacePage to respect --right-panel-width */}
-            {bottomLeftControls}
           </>
         )}
       </MapContainer>
     </div>
-  )
+  );
 }

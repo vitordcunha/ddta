@@ -6,6 +6,7 @@ import {
   owmMapTileSlug,
   type WeatherMapOverlayPreferences,
 } from '@/components/map/weather/mapWeatherTypes'
+import { WEATHER_MAP_TILE_ZOOM } from '@/components/map/weather/weatherMapLayerZoomBounds'
 
 export type RadarOverlayStatus = 'idle' | 'loading' | 'ready' | 'error'
 
@@ -77,12 +78,15 @@ export function PlannerWeatherMapLayers({
     if (!radarUrl) {
       return null
     }
+    const zb = WEATHER_MAP_TILE_ZOOM.radar!
     return (
       <TileLayer
         key={`radar-${String(radarFrameKey)}`}
         url={radarUrl}
         opacity={clampedOpacity}
         zIndex={280}
+        minZoom={zb.min}
+        maxNativeZoom={zb.max}
         attribution='Radar &copy; <a href="https://www.rainviewer.com/">RainViewer</a>'
       />
     )
@@ -97,13 +101,15 @@ export function PlannerWeatherMapLayers({
       return null
     }
     const url = `https://tile.openweathermap.org/map/${owmLayer}/{z}/{x}/{y}.png?appid=${encodeURIComponent(openWeatherApiKey)}`
+    const zb = WEATHER_MAP_TILE_ZOOM[layerId]!
     return (
       <TileLayer
         key={layerId}
         url={url}
         opacity={clampedOpacity}
         zIndex={280}
-        maxZoom={19}
+        minZoom={zb.min}
+        maxNativeZoom={zb.max}
         attribution='Weather &copy; <a href="https://openweathermap.org/">OpenWeatherMap</a>'
       />
     )

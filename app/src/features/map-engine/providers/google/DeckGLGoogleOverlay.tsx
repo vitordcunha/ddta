@@ -8,6 +8,7 @@ type DeckGLGoogleOverlayProps = {
   interleaved: boolean
   layers: Layer[]
   onWaypointClick?: (waypointId: string) => void
+  onWaypointPickMiss?: () => void
 }
 
 export function DeckGLGoogleOverlay({
@@ -15,6 +16,7 @@ export function DeckGLGoogleOverlay({
   interleaved,
   layers,
   onWaypointClick,
+  onWaypointPickMiss,
 }: DeckGLGoogleOverlayProps) {
   const overlayRef = useRef<GoogleMapsOverlay | null>(null)
 
@@ -37,15 +39,18 @@ export function DeckGLGoogleOverlay({
     overlayRef.current?.setProps({
       layers,
       onClick: (info) => {
-        if (info.layer?.id !== 'waypoints') return false
-        const obj = info.object as { id?: string } | undefined
-        if (obj && typeof obj.id === 'string') {
-          onWaypointClick?.(obj.id)
+        if (info.layer?.id === 'waypoints') {
+          const obj = info.object as { id?: string } | undefined
+          if (obj && typeof obj.id === 'string') {
+            onWaypointClick?.(obj.id)
+            return true
+          }
         }
+        onWaypointPickMiss?.()
         return false
       },
     })
-  }, [layers, onWaypointClick])
+  }, [layers, onWaypointClick, onWaypointPickMiss])
 
   return null
 }

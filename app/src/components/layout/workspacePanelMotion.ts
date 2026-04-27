@@ -1,10 +1,10 @@
 import type { Transition, Variants } from "framer-motion";
 
-/** Alinhado ao planejador expandido (`FlightPlannerExpandedModal`). */
+/** Painel do workspace: spring mais amortecido = menos oscilação e menos trabalho por frame. */
 export const WORKSPACE_PANEL_SPRING: Transition = {
   type: "spring",
-  damping: 30,
-  stiffness: 360,
+  damping: 38,
+  stiffness: 280,
 };
 
 const WORKSPACE_PANEL_TWEEN: Transition = {

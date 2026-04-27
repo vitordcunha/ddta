@@ -1,5 +1,7 @@
 import { memo, useEffect, useMemo } from 'react'
-import * as turf from '@turf/turf'
+import turfBbox from '@turf/bbox'
+import centerOfMass from '@turf/center-of-mass'
+import { featureCollection } from '@turf/helpers'
 import type { Feature, Polygon } from 'geojson'
 import { MapContainer, Polygon as LeafletPolygon, TileLayer, Tooltip, useMap } from 'react-leaflet'
 import type { PlannerBaseLayerId } from '@/features/flight-planner/constants/mapBaseLayers'
@@ -34,8 +36,8 @@ function FitBounds({
         })
       }
     }
-    const combined = turf.featureCollection(feats)
-    const b = turf.bbox(combined)
+    const combined = featureCollection(feats)
+    const b = turfBbox(combined)
     map.invalidateSize()
     map.fitBounds(
       [
@@ -174,7 +176,7 @@ export function CalibrationGridMap({
     () => new Set(highlightedSlotIds ?? []),
     [highlightedSlotIds],
   )
-  const center = turf.centerOfMass(calibrationPolygon).geometry.coordinates
+  const center = centerOfMass(calibrationPolygon).geometry.coordinates
   const lat = center[1]!
   const lon = center[0]!
   const { url, attribution } = getPlannerBaseLayerConfig(baseLayerId)

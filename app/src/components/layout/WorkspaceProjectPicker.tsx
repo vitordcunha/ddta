@@ -89,7 +89,7 @@ export function WorkspaceProjectPicker({
           sideOffset={8}
           collisionPadding={12}
           className={cn(
-            "z-[100] flex max-h-[min(70dvh,28rem)] w-[min(calc(100vw-1.5rem),20rem)] flex-col rounded-xl border border-[#2e2e2e] bg-[#0f0f0f] shadow-[0_16px_48px_rgba(0,0,0,0.55)] outline-none animate-fade-in",
+            "z-[100] flex max-h-[min(70dvh,28rem)] w-[min(calc(100vw-1.5rem),20rem)] flex-col rounded-xl border border-[#2e2e2e] bg-[rgba(26,26,26,0.97)] shadow-[0_16px_48px_rgba(0,0,0,0.55)] outline-none animate-fade-in",
           )}
         >
           <div className="shrink-0 border-b border-[#242424] p-2">

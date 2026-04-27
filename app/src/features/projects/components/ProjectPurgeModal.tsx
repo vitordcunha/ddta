@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Button, Modal } from '@/components/ui'
+import { Button, DialogPanel } from '@/components/ui'
 import { projectsService, type ProjectPurgeRequestBody } from '@/services/projectsService'
 
 type OptionKey = keyof ProjectPurgeRequestBody
@@ -61,7 +61,12 @@ type ProjectPurgeModalProps = {
   projectName: string
 }
 
-export function ProjectPurgeModal({ open, onOpenChange, projectId, projectName }: ProjectPurgeModalProps) {
+export function ProjectPurgeModal(props: ProjectPurgeModalProps) {
+  if (!props.open) return null
+  return <ProjectPurgeModalInner {...props} />
+}
+
+function ProjectPurgeModalInner({ open, onOpenChange, projectId, projectName }: ProjectPurgeModalProps) {
   const queryClient = useQueryClient()
   const [selection, setSelection] = useState<ProjectPurgeRequestBody>(INITIAL)
 
@@ -124,8 +129,13 @@ export function ProjectPurgeModal({ open, onOpenChange, projectId, projectName }
   const clearAll = () => setSelection(INITIAL)
 
   return (
-    <Modal open={open} onOpenChange={handleOpenChange} title="Limpar dados do projeto">
-      <div className="max-h-[min(70vh,520px)] space-y-4 overflow-y-auto pr-1">
+    <DialogPanel
+      open={open}
+      onOpenChange={handleOpenChange}
+      title="Limpar dados do projeto"
+      contentClassName="lg:max-w-[min(92vw,42rem)]"
+    >
+      <div className="space-y-4 pr-1">
         <p className="text-sm text-neutral-400">
           Escolha o que remover de <span className="font-medium text-neutral-100">{projectName}</span>. A accao e
           irreversivel apos confirmar. Com processamento ou preview em fila ou a correr, o pedido e recusado.
@@ -177,6 +187,6 @@ export function ProjectPurgeModal({ open, onOpenChange, projectId, projectName }
           </Button>
         </div>
       </div>
-    </Modal>
+    </DialogPanel>
   )
 }

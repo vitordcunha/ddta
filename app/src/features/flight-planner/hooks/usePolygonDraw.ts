@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import * as turf from '@turf/turf'
+import turfArea from '@turf/area'
 import type { Feature, Polygon } from 'geojson'
 
 type LeafletLayer = {
@@ -44,7 +44,7 @@ export function usePolygonDraw() {
     setPolygon(null)
   }
 
-  const polygonArea = useMemo(() => (polygon ? turf.area(polygon) : null), [polygon])
+  const polygonArea = useMemo(() => (polygon ? turfArea(polygon) : null), [polygon])
 
   return {
     polygon,

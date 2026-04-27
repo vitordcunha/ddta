@@ -1,4 +1,5 @@
-import * as turf from "@turf/turf"
+import distance from "@turf/distance"
+import { point } from "@turf/helpers"
 import type { Feature, Polygon } from "geojson"
 
 /** Draft points are [lat, lon] in Leaflet order */
@@ -17,9 +18,9 @@ export function isClickNearFirstVertex(
 ): boolean {
   if (draftPoints.length < minPointsForFirstVertexClose) return false
   const first = draftPoints[0]!
-  const from = turf.point([first[1], first[0]])
-  const to = turf.point([clickLatLng[1], clickLatLng[0]])
-  return turf.distance(from, to, { units: "meters" }) < maxDistanceM
+  const from = point([first[1], first[0]])
+  const to = point([clickLatLng[1], clickLatLng[0]])
+  return distance(from, to, { units: "meters" }) < maxDistanceM
 }
 
 export function closeDraftToPolygon(

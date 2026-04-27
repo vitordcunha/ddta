@@ -1,4 +1,4 @@
-import { Button, Modal } from '@/components/ui'
+import { Button, DialogPanel } from '@/components/ui'
 import type { Project } from '@/types/project'
 
 type DeleteProjectModalProps = {
@@ -9,8 +9,9 @@ type DeleteProjectModalProps = {
 }
 
 export function DeleteProjectModal({ open, onOpenChange, project, onConfirm }: DeleteProjectModalProps) {
+  if (!open) return null
   return (
-    <Modal open={open} onOpenChange={onOpenChange} title="Excluir projeto">
+    <DialogPanel open={open} onOpenChange={onOpenChange} title="Excluir projeto">
       <div className="space-y-4">
         <p className="text-sm text-neutral-300">
           Tem certeza que deseja excluir <span className="font-medium text-neutral-100">{project?.name ?? 'este projeto'}</span>?
@@ -30,6 +31,6 @@ export function DeleteProjectModal({ open, onOpenChange, project, onConfirm }: D
           </Button>
         </div>
       </div>
-    </Modal>
+    </DialogPanel>
   )
 }

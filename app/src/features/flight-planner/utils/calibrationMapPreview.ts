@@ -1,4 +1,5 @@
-import * as turf from '@turf/turf'
+import bearing from '@turf/bearing'
+import { point } from '@turf/helpers'
 import type { FlightParams, Waypoint } from '@/features/flight-planner/types'
 import { getDroneSpec } from '@/features/flight-planner/utils/droneSpecs'
 import { calculateFootprint, calculateGsd } from '@/features/flight-planner/utils/waypointCalculator'
@@ -51,9 +52,9 @@ export function buildCalibrationWaypointFootprintRings(
     const toward = next ?? prev
     if (!toward) continue
 
-    const bearingDeg = turf.bearing(
-      turf.point([w.lng, w.lat]),
-      turf.point([toward.lng, toward.lat]),
+    const bearingDeg = bearing(
+      point([w.lng, w.lat]),
+      point([toward.lng, toward.lat]),
     )
     const b = (bearingDeg * Math.PI) / 180
 

@@ -1,20 +1,38 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
-import * as turf from "@turf/turf";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { createPortal } from "react-dom";
+import turfBbox from "@turf/bbox";
+import centerOfMass from "@turf/center-of-mass";
+import { featureCollection, lineString, polygon } from "@turf/helpers";
 import type * as GeoJSON from "geojson";
+import { Trash2 } from "lucide-react";
 import L, { type DivIcon } from "leaflet";
 import {
   CircleMarker,
   Marker,
   Polygon,
   Polyline,
+  Popup,
   Tooltip,
   useMap,
   useMapEvents,
 } from "react-leaflet";
 import { useMapEngine } from "@/features/map-engine/useMapEngine";
+import { DrawingToolbar } from "@/features/flight-planner/components/DrawingToolbar";
+import { CrosshairOverlay } from "@/features/flight-planner/components/CrosshairOverlay";
+import { FreehandDrawOverlay } from "@/features/flight-planner/components/FreehandDrawOverlay";
+import { PolygonEditHandles } from "@/features/flight-planner/components/PolygonEditHandles";
 import { createMapboxElevationService } from "@/features/flight-planner/services/elevationService";
+import { usePointerPressHighlightOverButton } from "@/features/flight-planner/hooks/usePointerPressHighlightOverButton";
 import { useFlightStore } from "@/features/flight-planner/stores/useFlightStore";
-import type { Waypoint } from "@/features/flight-planner/types";
+import type { FlightStats, Strip, Waypoint } from "@/features/flight-planner/types";
 import type { PointOfInterest } from "@/features/flight-planner/types/poi";
 import { newPointOfInterest } from "@/features/flight-planner/types/poi";
 import { applyTerrainToWaypoints } from "@/features/flight-planner/utils/terrainFollowingApply";
@@ -27,15 +45,51 @@ import {
   closeDraftToPolygon,
   isClickNearFirstVertex,
 } from "@/features/flight-planner/utils/polygonDraft";
+import {
+  attachHoldStillLongPressToElement,
+  getEventClientPoint,
+  isReleaseOverElement,
+  MAP_LONG_PRESS_MARKER_TOUCH_SLOP_PX,
+  MAP_LONG_PRESS_MS,
+  subscribeHoldStillLongPress,
+} from "@/features/flight-planner/utils/mapLongPress";
+import { cn } from "@/lib/utils";
+import { readUserPreferencesFromStorage } from "@/constants/userPreferences";
+import { haptic } from "@/utils/haptics";
 import { useDroneModelsQuery } from "@/features/flight-planner/hooks/useDroneModelsQuery";
 import {
   profileToCameraParams,
   resolveFlightDroneProfile,
 } from "@/features/flight-planner/utils/flightDroneProfile";
 import { computeFrustumGeometry } from "@/features/flight-planner/utils/frustumCalculator";
+import { toast } from "sonner";
 
 function formatWpLine(w: Waypoint) {
   return `${w.lat.toFixed(6)}, ${w.lng.toFixed(6)} | ${w.altitude}m`;
+}
+
+type WaypointRemovalSnapshot = {
+  waypoints: Waypoint[];
+  strips: Strip[];
+  stats: FlightStats | null;
+  selectedWaypointId: string | null;
+};
+
+function cloneWaypointRemovalSnapshot(state: {
+  waypoints: Waypoint[];
+  strips: Strip[];
+  stats: FlightStats | null;
+  selectedWaypointId: string | null;
+}): WaypointRemovalSnapshot {
+  return {
+    waypoints: state.waypoints.map((w) => ({ ...w })),
+    strips: state.strips.map((s) => ({
+      ...s,
+      coordinates: s.coordinates.map((c) => [...c] as [number, number]),
+    })),
+    stats: state.stats ? { ...state.stats } : null,
+    selectedWaypointId: state.selectedWaypointId,
+  };
 }
 
 /** Mesmo `t` que `buildCalibrationWaypointFootprintRings` usa para a cor da área da foto. */
@@ -67,7 +121,7 @@ function mkMissionWpIcon(dPx: number, fill: string, stroke: string, strokeW: num
     className: "plan-wp-mission-icon",
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
-    html: `<div style="width:${dPx}px;height:${dPx}px;border-radius:50%;background:${fill};border:${strokeW}px solid ${stroke};box-sizing:border-box;margin:${pad}px"/>`,
+    html: `<div style="width:${dPx}px;height:${dPx}px;border-radius:50%;background:${fill};border:${strokeW}px solid ${stroke};box-sizing:border-box;margin:${pad}px;touch-action:none"/>`,
   });
 }
 
@@ -122,6 +176,223 @@ const WP_MISSION_ICON = {
   midMuted: mkMissionWpIcon(10, "#94a3b8", "#cbd5e1", 1),
 } as const;
 
+function MissionWaypointMarkerWithHoldDelete({
+  waypoint,
+  icon,
+  zIndexOffset,
+  draggable,
+  holdDeleteEnabled,
+  tooltip,
+  onDragEndForId,
+}: {
+  waypoint: Waypoint;
+  icon: DivIcon;
+  zIndexOffset: number;
+  draggable: boolean;
+  holdDeleteEnabled: boolean;
+  tooltip: ReactNode;
+  onDragEndForId: (id: string) => (e: L.LeafletEvent) => void;
+}) {
+  const markerRef = useRef<L.Marker | null>(null);
+  const holdCtlRef = useRef<ReturnType<
+    typeof attachHoldStillLongPressToElement
+  > | null>(null);
+  const shouldIgnoreLongPressRef = useRef(false);
+  const openedViaHoldRef = useRef(false);
+  const deleteBtnRef = useRef<HTMLButtonElement | null>(null);
+  const [showDeleteMenu, setShowDeleteMenu] = useState(false);
+  const setSelectedWaypoint = useFlightStore((s) => s.setSelectedWaypoint);
+  const removeWaypoint = useFlightStore((s) => s.removeWaypoint);
+  const waypointCount = useFlightStore((s) => s.waypoints.length);
+
+  const deletePressed = usePointerPressHighlightOverButton(
+    showDeleteMenu && waypointCount > 1,
+    deleteBtnRef,
+  );
+
+  const performDelete = useCallback(() => {
+    const st = useFlightStore.getState();
+    if (st.waypoints.length <= 1) {
+      setShowDeleteMenu(false);
+      return;
+    }
+    const snapshot = cloneWaypointRemovalSnapshot(st);
+
+    if (st.selectedWaypointId === waypoint.id) {
+      setSelectedWaypoint(null);
+    }
+    removeWaypoint(waypoint.id);
+    setShowDeleteMenu(false);
+    haptic.medium();
+
+    toast("Waypoint removido", {
+      action: {
+        label: "Desfazer",
+        onClick: () => {
+          const s = useFlightStore.getState();
+          s.setResult(snapshot.waypoints, snapshot.stats, snapshot.strips);
+          s.setSelectedWaypoint(snapshot.selectedWaypointId);
+          haptic.light();
+        },
+      },
+      duration: 10_000,
+    });
+  }, [waypoint.id, removeWaypoint, setSelectedWaypoint]);
+
+  const cancelHold = useCallback(() => {
+    holdCtlRef.current?.cancelActiveHold();
+  }, []);
+
+  useLayoutEffect(() => {
+    shouldIgnoreLongPressRef.current = showDeleteMenu;
+  }, [showDeleteMenu]);
+
+  useEffect(() => {
+    if (!holdDeleteEnabled || showDeleteMenu) return undefined;
+
+    let cancelled = false;
+    let raf = 0;
+    let attempts = 0;
+    let ctl: ReturnType<typeof attachHoldStillLongPressToElement> | null = null;
+
+    const tryAttach = () => {
+      if (cancelled) return;
+      const el = markerRef.current?.getElement();
+      if (!el) {
+        attempts += 1;
+        if (attempts < 20) {
+          raf = requestAnimationFrame(tryAttach);
+        }
+        return;
+      }
+      ctl = attachHoldStillLongPressToElement(el, {
+        shouldIgnore: () => shouldIgnoreLongPressRef.current,
+        slopPx: MAP_LONG_PRESS_MARKER_TOUCH_SLOP_PX,
+        onFire: () => {
+          openedViaHoldRef.current = true;
+          haptic.heavy();
+          setShowDeleteMenu(true);
+        },
+      });
+      holdCtlRef.current = ctl;
+    };
+
+    tryAttach();
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      ctl?.detach();
+      holdCtlRef.current = null;
+    };
+  }, [holdDeleteEnabled, waypoint.lat, waypoint.lng, showDeleteMenu]);
+
+  useEffect(() => {
+    const m = markerRef.current;
+    if (!m) return undefined;
+    if (!showDeleteMenu) {
+      m.closePopup();
+      openedViaHoldRef.current = false;
+      return undefined;
+    }
+    const t = window.setTimeout(() => {
+      m.openPopup();
+    }, 0);
+    return () => clearTimeout(t);
+  }, [showDeleteMenu]);
+
+  useEffect(() => {
+    if (!showDeleteMenu) return undefined;
+    const onRelease = (e: Event) => {
+      if (!openedViaHoldRef.current) return;
+      openedViaHoldRef.current = false;
+      if (useFlightStore.getState().waypoints.length <= 1) return;
+      const btn = deleteBtnRef.current;
+      if (!btn || !isReleaseOverElement(btn, e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      performDelete();
+    };
+    window.addEventListener("pointerup", onRelease, true);
+    window.addEventListener("touchend", onRelease, true);
+    return () => {
+      window.removeEventListener("pointerup", onRelease, true);
+      window.removeEventListener("touchend", onRelease, true);
+    };
+  }, [showDeleteMenu, performDelete]);
+
+  return (
+    <Marker
+      ref={markerRef}
+      position={[waypoint.lat, waypoint.lng]}
+      icon={icon}
+      draggable={draggable && !showDeleteMenu}
+      zIndexOffset={zIndexOffset}
+      eventHandlers={{
+        click: (e) => {
+          L.DomEvent.stopPropagation(e);
+          setSelectedWaypoint(waypoint.id);
+        },
+        dragstart: cancelHold,
+        dragend: onDragEndForId(waypoint.id),
+        popupclose: () => setShowDeleteMenu(false),
+      }}
+    >
+      {!showDeleteMenu ? <Tooltip direction="top" offset={[0, -8]}>{tooltip}</Tooltip> : null}
+      {showDeleteMenu ? (
+        <Popup
+          offset={[0, -10]}
+          className="dd-map-action-popup"
+          closeButton
+          autoPan
+          keepInView
+        >
+          <div className="flex min-w-[12.5rem] max-w-[min(92vw,16rem)] flex-col">
+            <div className="border-b border-white/[0.08] px-3 py-2.5 pr-9">
+              <p className="text-sm font-semibold tracking-tight text-neutral-100">Waypoint</p>
+              <p className="mt-1 font-mono text-[11px] leading-snug text-neutral-500">
+                {formatWpLine(waypoint)}
+              </p>
+            </div>
+            <div className="flex flex-col gap-0.5 p-2">
+              {waypointCount > 1 ? (
+                <button
+                  ref={deleteBtnRef}
+                  type="button"
+                  className={cn(
+                    "touch-target flex min-h-11 w-full items-center gap-2 rounded-lg border border-transparent px-3 text-left text-sm font-medium text-red-400 transition-colors duration-150",
+                    "hover:border-red-500/25 hover:bg-red-500/10 active:bg-red-500/15",
+                    deletePressed &&
+                      "border-red-500/35 bg-red-500/16 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
+                  )}
+                  onClick={performDelete}
+                >
+                  <Trash2 className="size-4 shrink-0 opacity-90" aria-hidden />
+                  Deletar waypoint
+                </button>
+              ) : (
+                <p className="px-1 py-1.5 text-xs leading-snug text-neutral-400">
+                  A rota precisa de pelo menos um waypoint.
+                </p>
+              )}
+              <button
+                type="button"
+                className={cn(
+                  "touch-target flex min-h-11 w-full items-center justify-center rounded-lg px-3 text-sm text-neutral-200 transition-colors",
+                  "hover:bg-white/[0.06] active:bg-white/[0.08]",
+                )}
+                onClick={() => setShowDeleteMenu(false)}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </Popup>
+      ) : null}
+    </Marker>
+  );
+}
+
 function PlanMissionWaypointMarkers({
   waypoints,
   muteFullMission,
@@ -129,7 +400,6 @@ function PlanMissionWaypointMarkers({
   waypoints: Waypoint[];
   muteFullMission: boolean;
 }) {
-  const setSelectedWaypoint = useFlightStore((s) => s.setSelectedWaypoint);
   const { mapboxToken } = useMapEngine();
   const dragTerrainSerial = useRef(0);
   const dragElevationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -187,6 +457,7 @@ function PlanMissionWaypointMarkers({
   );
 
   const draggable = !muteFullMission;
+  const holdDeleteEnabled = draggable && waypoints.length > 1;
 
   if (waypoints.length === 0) return null;
 
@@ -194,23 +465,22 @@ function PlanMissionWaypointMarkers({
     const w = waypoints[0]!;
     const icon = muteFullMission ? WP_MISSION_ICON.singleMuted : WP_MISSION_ICON.single;
     return (
-      <Marker
+      <MissionWaypointMarkerWithHoldDelete
         key={`wp-mission-${w.id}`}
-        position={[w.lat, w.lng]}
+        waypoint={w}
         icon={icon}
-        draggable={draggable}
         zIndexOffset={600}
-        eventHandlers={{
-          click: () => setSelectedWaypoint(w.id),
-          dragend: onDragEnd(w.id),
-        }}
-      >
-        <Tooltip direction="top" offset={[0, -8]}>
-          <span className="font-medium">Inicio e fim da rota</span>
-          <br />
-          {formatWpLine(w)}
-        </Tooltip>
-      </Marker>
+        draggable={draggable}
+        holdDeleteEnabled={false}
+        onDragEndForId={onDragEnd}
+        tooltip={
+          <>
+            <span className="font-medium">Inicio e fim da rota</span>
+            <br />
+            {formatWpLine(w)}
+          </>
+        }
+      />
     );
   }
 
@@ -222,55 +492,72 @@ function PlanMissionWaypointMarkers({
       {waypoints.slice(1, -1).map((waypoint) => {
         const icon = muteFullMission ? WP_MISSION_ICON.midMuted : WP_MISSION_ICON.mid;
         return (
-          <Marker
+          <MissionWaypointMarkerWithHoldDelete
             key={`wp-mission-${waypoint.id}`}
-            position={[waypoint.lat, waypoint.lng]}
+            waypoint={waypoint}
             icon={icon}
-            draggable={draggable}
             zIndexOffset={400}
-            eventHandlers={{
-              click: () => setSelectedWaypoint(waypoint.id),
-              dragend: onDragEnd(waypoint.id),
-            }}
-          >
-            <Tooltip>{formatWpLine(waypoint)}</Tooltip>
-          </Marker>
+            draggable={draggable}
+            holdDeleteEnabled={holdDeleteEnabled}
+            onDragEndForId={onDragEnd}
+            tooltip={
+              <>
+                {formatWpLine(waypoint)}
+                {holdDeleteEnabled ? (
+                  <>
+                    <br />
+                    <span className="text-[11px] text-neutral-400">Segure para excluir</span>
+                  </>
+                ) : null}
+              </>
+            }
+          />
         );
       })}
-      <Marker
+      <MissionWaypointMarkerWithHoldDelete
         key={`wp-mission-start-${first.id}`}
-        position={[first.lat, first.lng]}
+        waypoint={first}
         icon={muteFullMission ? WP_MISSION_ICON.startMuted : WP_MISSION_ICON.start}
-        draggable={draggable}
         zIndexOffset={600}
-        eventHandlers={{
-          click: () => setSelectedWaypoint(first.id),
-          dragend: onDragEnd(first.id),
-        }}
-      >
-        <Tooltip direction="top" offset={[0, -8]}>
-          <span className="font-medium">Inicio da rota</span>
-          <br />
-          {formatWpLine(first)}
-        </Tooltip>
-      </Marker>
-      <Marker
-        key={`wp-mission-end-${last.id}`}
-        position={[last.lat, last.lng]}
-        icon={muteFullMission ? WP_MISSION_ICON.endMuted : WP_MISSION_ICON.end}
         draggable={draggable}
+        holdDeleteEnabled={holdDeleteEnabled}
+        onDragEndForId={onDragEnd}
+        tooltip={
+          <>
+            <span className="font-medium">Inicio da rota</span>
+            <br />
+            {formatWpLine(first)}
+            {holdDeleteEnabled ? (
+              <>
+                <br />
+                <span className="text-[11px] text-neutral-400">Segure para excluir</span>
+              </>
+            ) : null}
+          </>
+        }
+      />
+      <MissionWaypointMarkerWithHoldDelete
+        key={`wp-mission-end-${last.id}`}
+        waypoint={last}
+        icon={muteFullMission ? WP_MISSION_ICON.endMuted : WP_MISSION_ICON.end}
         zIndexOffset={500}
-        eventHandlers={{
-          click: () => setSelectedWaypoint(last.id),
-          dragend: onDragEnd(last.id),
-        }}
-      >
-        <Tooltip direction="top" offset={[0, -8]}>
-          <span className="font-medium">Fim da rota</span>
-          <br />
-          {formatWpLine(last)}
-        </Tooltip>
-      </Marker>
+        draggable={draggable}
+        holdDeleteEnabled={holdDeleteEnabled}
+        onDragEndForId={onDragEnd}
+        tooltip={
+          <>
+            <span className="font-medium">Fim da rota</span>
+            <br />
+            {formatWpLine(last)}
+            {holdDeleteEnabled ? (
+              <>
+                <br />
+                <span className="text-[11px] text-neutral-400">Segure para excluir</span>
+              </>
+            ) : null}
+          </>
+        }
+      />
     </>
   );
 }
@@ -317,18 +604,18 @@ function MapFitCalibrationPreview({
       ([lat, lon]) => [lon, lat] as [number, number],
     );
     const feats: GeoJSON.Feature[] = [
-      turf.polygon([[...lonLatRing, lonLatRing[0]!]]) as GeoJSON.Feature,
+      polygon([[...lonLatRing, lonLatRing[0]!]]) as GeoJSON.Feature,
     ];
     for (const r of rings) {
       const closed = r.ringLatLng.map(([lat, lon]) => [lon, lat] as [number, number]);
       if (closed.length >= 3) {
-        feats.push(turf.polygon([[...closed, closed[0]!]]) as GeoJSON.Feature);
+        feats.push(polygon([[...closed, closed[0]!]]) as GeoJSON.Feature);
       }
     }
     if (routeLatLng.length >= 2) {
-      feats.push(turf.lineString(routeLatLng.map(([lat, lon]) => [lon, lat])) as GeoJSON.Feature);
+      feats.push(lineString(routeLatLng.map(([lat, lon]) => [lon, lat])) as GeoJSON.Feature);
     }
-    const b = turf.bbox(turf.featureCollection(feats));
+    const b = turfBbox(featureCollection(feats));
     map.invalidateSize();
     map.fitBounds(
       [
@@ -353,6 +640,48 @@ export function FlightPlannerMapContent() {
   const calibrationMapPreviewActive = useFlightStore(
     (s) => s.calibrationMapPreviewActive,
   );
+  const plannerInteractionMode = useFlightStore((s) => s.plannerInteractionMode);
+  const popLastDraftPoint = useFlightStore((s) => s.popLastDraftPoint);
+  const closeDraft = useFlightStore((s) => s.closeDraft);
+  const setDraftPoints = useFlightStore((s) => s.setDraftPoints);
+  const setPlannerInteractionMode = useFlightStore((s) => s.setPlannerInteractionMode);
+  const movePolygonVertex = useFlightStore((s) => s.movePolygonVertex);
+  const deletePolygonVertex = useFlightStore((s) => s.deletePolygonVertex);
+  const insertPolygonVertex = useFlightStore((s) => s.insertPolygonVertex);
+
+  const isDrawMode = plannerInteractionMode === "draw";
+  const crosshairEnabled = readUserPreferencesFromStorage().crosshairDrawMode;
+  const map = useMap();
+
+  const handleDrawingCancel = useCallback(() => {
+    setDraftPoints([]);
+    setPlannerInteractionMode("navigate");
+    haptic.medium();
+  }, [setDraftPoints, setPlannerInteractionMode]);
+
+  const handleDrawingComplete = useCallback(() => {
+    closeDraft();
+    setPlannerInteractionMode("navigate");
+    haptic.success();
+  }, [closeDraft, setPlannerInteractionMode]);
+
+  const handleCrosshairAddVertex = useCallback(() => {
+    const c = map.getCenter();
+    const latlng: [number, number] = [c.lat, c.lng];
+    const store = useFlightStore.getState();
+    if (isClickNearFirstVertex(latlng, store.draftPoints)) {
+      const closed = closeDraftToPolygon(store.draftPoints);
+      if (closed) {
+        haptic.success();
+        store.setPolygon(closed);
+        store.setDraftPoints([]);
+        store.setPlannerInteractionMode("navigate");
+      }
+      return;
+    }
+    haptic.light();
+    store.addDraftPoint(latlng);
+  }, [map]);
   const { data: droneCatalog } = useDroneModelsQuery();
   const droneCameraParams = useMemo(
     () => profileToCameraParams(resolveFlightDroneProfile(params, droneCatalog)),
@@ -366,7 +695,7 @@ export function FlightPlannerMapContent() {
 
   const calibrationCenterLat = useMemo(() => {
     if (!calibrationMission) return 0;
-    return turf.centerOfMass(calibrationMission.calibrationPolygon).geometry
+    return centerOfMass(calibrationMission.calibrationPolygon).geometry
       .coordinates[1]!;
   }, [calibrationMission]);
 
@@ -426,7 +755,33 @@ export function FlightPlannerMapContent() {
   return (
     <>
       <MapDrawInteraction />
+      <MapClearWaypointSelection />
       <MapPlannerCursor />
+      <MapGestureLock />
+      <MapLongPressWaypoint />
+      <FreehandDrawOverlay visible={isDrawMode} />
+      <CrosshairOverlay
+        visible={isDrawMode && crosshairEnabled}
+        onAddVertex={handleCrosshairAddVertex}
+      />
+      <PolygonEditHandles
+        polygon={polygon}
+        editable={!isDrawMode && polygon !== null}
+        onVertexMove={(i, ll) => movePolygonVertex(i, ll)}
+        onVertexDelete={(i) => { haptic.medium(); deletePolygonVertex(i); }}
+        onMidpointInsert={(after, ll) => { haptic.light(); insertPolygonVertex(after, ll); }}
+      />
+      {createPortal(
+        <DrawingToolbar
+          visible={isDrawMode}
+          canUndo={draftPoints.length > 0}
+          canComplete={draftPoints.length >= 3}
+          onUndo={() => { haptic.light(); popLastDraftPoint(); }}
+          onCancel={handleDrawingCancel}
+          onComplete={handleDrawingComplete}
+        />,
+        document.body,
+      )}
       {draftPoints.map((pt, i) => {
         const isFirst = i === 0;
         const canCloseHere = isFirst && draftPoints.length > 2;
@@ -614,6 +969,19 @@ export function FlightPlannerMapContent() {
  * Clicks no mapa: so em modo desenho; clique no primeiro ponto
  * (com mais de 4 pontos / 5+ vertices) fecha o poligono.
  */
+/** Em modo navegar: clique no mapa (fora dos marcadores) limpa o waypoint selecionado. */
+function MapClearWaypointSelection() {
+  useMapEvents({
+    click: () => {
+      const st = useFlightStore.getState();
+      if (st.poiPlacementActive) return;
+      if (st.plannerInteractionMode !== "navigate") return;
+      if (st.selectedWaypointId) st.setSelectedWaypoint(null);
+    },
+  });
+  return null;
+}
+
 function MapDrawInteraction() {
   useMapEvents({
     click: (e) => {
@@ -645,11 +1013,13 @@ function MapDrawInteraction() {
       if (isClickNearFirstVertex(latlng, draftPoints)) {
         const closed = closeDraftToPolygon(draftPoints);
         if (closed) {
+          haptic.success();
           setPolygon(closed);
           setDraftPoints([]);
         }
         return;
       }
+      haptic.light();
       addDraftPoint(latlng);
     },
   });
@@ -668,5 +1038,84 @@ function MapPlannerCursor() {
       el.style.cursor = "";
     };
   }, [map, mode, poiPlacementActive]);
+  return null;
+}
+
+/** Módulo 6: Long press no mapa em modo navigate adiciona waypoint manual. */
+function MapLongPressWaypoint() {
+  const mode = useFlightStore((s) => s.plannerInteractionMode);
+  const waypoints = useFlightStore((s) => s.waypoints);
+  const addManualWaypoint = useFlightStore((s) => s.addManualWaypoint);
+  const map = useMap();
+  const mapHoldCancelRef = useRef<(() => void) | null>(null);
+
+  useEffect(
+    () => () => {
+      mapHoldCancelRef.current?.();
+      mapHoldCancelRef.current = null;
+    },
+    [],
+  );
+
+  useMapEvents({
+    mousedown: (e) => {
+      if (mode !== "navigate") return;
+      if (useFlightStore.getState().poiPlacementActive) return;
+      mapHoldCancelRef.current?.();
+      mapHoldCancelRef.current = null;
+      const pt = getEventClientPoint(e.originalEvent);
+      const latlng = e.latlng;
+      const runAdd = () => {
+        const alt =
+          waypoints.length > 0
+            ? waypoints.reduce((sum, w) => sum + w.altitude, 0) / waypoints.length
+            : useFlightStore.getState().params.altitudeM;
+        haptic.heavy();
+        addManualWaypoint([latlng.lat, latlng.lng], alt);
+      };
+      if (!pt) {
+        let cancel: () => void;
+        const finishListeners = () => {
+          map.off("mouseup", cancel);
+          map.off("mousemove", cancel);
+        };
+        const timer = window.setTimeout(() => {
+          finishListeners();
+          mapHoldCancelRef.current = null;
+          runAdd();
+        }, MAP_LONG_PRESS_MS);
+        cancel = () => {
+          window.clearTimeout(timer);
+          finishListeners();
+          mapHoldCancelRef.current = null;
+        };
+        mapHoldCancelRef.current = cancel;
+        map.on("mouseup", cancel);
+        map.on("mousemove", cancel);
+        return;
+      }
+      mapHoldCancelRef.current = subscribeHoldStillLongPress(pt, () => {
+        mapHoldCancelRef.current = null;
+        runAdd();
+      });
+    },
+  });
+  return null;
+}
+
+/** Módulo 8: desabilita gestos conflitantes ao entrar em modo desenho. */
+function MapGestureLock() {
+  const mode = useFlightStore((s) => s.plannerInteractionMode);
+  const { disableDrawConflictGestures, enableDrawConflictGestures } = useMapEngine();
+  useEffect(() => {
+    if (mode === "draw") {
+      disableDrawConflictGestures();
+    } else {
+      enableDrawConflictGestures();
+    }
+    return () => {
+      enableDrawConflictGestures();
+    };
+  }, [mode, disableDrawConflictGestures, enableDrawConflictGestures]);
   return null;
 }

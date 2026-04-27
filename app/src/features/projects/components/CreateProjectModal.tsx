@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, Modal } from '@/components/ui'
+import { Button, DialogPanel } from '@/components/ui'
 import type { Project } from '@/types/project'
 
 type CreateProjectModalProps = {
@@ -9,7 +9,12 @@ type CreateProjectModalProps = {
   project?: Project | null
 }
 
-export function CreateProjectModal({ open, onOpenChange, onSubmit, project }: CreateProjectModalProps) {
+export function CreateProjectModal(props: CreateProjectModalProps) {
+  if (!props.open) return null
+  return <CreateProjectModalInner {...props} />
+}
+
+function CreateProjectModalInner({ open, onOpenChange, onSubmit, project }: CreateProjectModalProps) {
   const [name, setName] = useState(project?.name ?? '')
   const [description, setDescription] = useState(project?.description ?? '')
   const [error, setError] = useState<string | null>(null)
@@ -36,7 +41,12 @@ export function CreateProjectModal({ open, onOpenChange, onSubmit, project }: Cr
   }
 
   return (
-    <Modal open={open} onOpenChange={onOpenChange} title={project ? 'Editar projeto' : 'Criar projeto'}>
+    <DialogPanel
+      open={open}
+      onOpenChange={onOpenChange}
+      title={project ? 'Editar projeto' : 'Criar projeto'}
+      contentClassName="lg:max-w-[min(92vw,32rem)]"
+    >
       <div className="space-y-4">
         <div className="space-y-2">
           <label htmlFor="project-name" className="text-sm text-neutral-300">
@@ -72,6 +82,6 @@ export function CreateProjectModal({ open, onOpenChange, onSubmit, project }: Cr
           <Button onClick={handleSubmit}>{project ? 'Salvar' : 'Criar'}</Button>
         </div>
       </div>
-    </Modal>
+    </DialogPanel>
   )
 }

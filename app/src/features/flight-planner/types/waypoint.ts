@@ -22,6 +22,11 @@ export type Waypoint = {
    * não recalcula a altitude (apenas `terrainElevation` de exibição).
    */
   manualAltitude?: boolean
+  /**
+   * Se true, este waypoint foi adicionado manualmente pelo operador (long press no mapa),
+   * não gerado automaticamente pelo calculador de rota.
+   */
+  isManual?: boolean
 }
 
 type LegacyWaypoint = {

@@ -1,9 +1,8 @@
-import * as Dialog from '@radix-ui/react-dialog'
 import { useCallback, useEffect, useId, useMemo, useState, type KeyboardEvent } from 'react'
 import type { Feature, Polygon } from 'geojson'
-import { ImageUp, Sparkles, X } from 'lucide-react'
+import { ImageUp, Sparkles } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { Badge, Button } from '@/components/ui'
+import { Badge, Button, DialogPanel } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { useCalibrationSession } from '@/features/flight-planner/hooks/useCalibrationSession'
 import { computeMinShutterSuggestion, getCameraModelGuidance } from '@/features/flight-planner/utils/cameraGuidance'
@@ -72,7 +71,12 @@ function mergeChecked(state: Record<string, boolean>, ids: string[], prev: Recor
   return next
 }
 
-export function PreFlightChecklistModal({
+export function PreFlightChecklistModal(props: PreFlightChecklistModalProps) {
+  if (!props.open) return null
+  return <PreFlightChecklistModalInner {...props} />
+}
+
+function PreFlightChecklistModalInner({
   open,
   onOpenChange,
   flow = 'mission',
@@ -197,57 +201,39 @@ export function PreFlightChecklistModal({
   }
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay
-          className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm"
-          onClick={() => onOpenChange(false)}
-        />
-        <Dialog.Content
-          className="fixed left-1/2 top-1/2 z-[201] flex max-h-[min(92vh,780px)] w-[min(92vw,36rem)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border border-neutral-800 bg-neutral-900 shadow-xl outline-none animate-fade-up"
-          aria-labelledby={titleId}
-          aria-describedby={descId}
-          onKeyDown={onContentKeyDown}
-        >
-          <div className="flex shrink-0 items-start justify-between gap-3 border-b border-white/10 p-4 pb-3">
-            <div className="min-w-0 pr-2">
-              <Dialog.Title id={titleId} className="text-lg font-semibold tracking-tight text-neutral-100">
-                {flow === 'calibration' ? 'Antes do voo de calibração' : 'Antes de voar'}
-              </Dialog.Title>
-              <p id={descId} className="mt-1.5 text-sm leading-relaxed text-neutral-400">
-                {flow === 'calibration' ? (
-                  <>
-                    Checklist e condições para o voo de teste; na última etapa exporta o KMZ de calibração (área
-                    reduzida) e acompanha a sessão. A grade no mapa fica no painel «Voo de calibração»; a análise
-                    detalhada abre na página da sessão.
-                  </>
-                ) : (
-                  <>
-                    Checklist e condições primeiro; depois câmera; por fim missão e calibração (KMZ de teste) e
-                    confirmação do KMZ da área completa. O KMZ completo só é gerado ao confirmar na última etapa. A
-                    pré-visualização da grade no mapa fica no painel «Voo de calibração»; a análise detalhada abre na
-                    página da sessão.
-                  </>
-                )}
-              </p>
-            </div>
-            <Dialog.Close asChild>
-              <button
-                type="button"
-                className="shrink-0 rounded-md border border-transparent p-1.5 text-neutral-400 hover:border-neutral-800 hover:bg-neutral-950 hover:text-neutral-100"
-                aria-label="Fechar (Esc)"
-              >
-                <X className="size-4" />
-              </button>
-            </Dialog.Close>
-          </div>
+    <DialogPanel
+      open={open}
+      onOpenChange={onOpenChange}
+      zBase={200}
+      titleId={titleId}
+      ariaDescribedBy={descId}
+      onContentKeyDown={onContentKeyDown}
+      contentClassName="lg:max-w-[min(92vw,36rem)]"
+      title={flow === 'calibration' ? 'Antes do voo de calibração' : 'Antes de voar'}
+      bodyClassName="pt-2 pb-5"
+    >
+      <p id={descId} className="mb-3 text-sm leading-relaxed text-neutral-400">
+        {flow === 'calibration' ? (
+          <>
+            Checklist e condições para o voo de teste; na última etapa exporta o KMZ de calibração (área reduzida) e
+            acompanha a sessão. A grade no mapa fica no painel «Voo de calibração»; a análise detalhada abre na página da
+            sessão.
+          </>
+        ) : (
+          <>
+            Checklist e condições primeiro; depois câmera; por fim missão e calibração (KMZ de teste) e confirmação do
+            KMZ da área completa. O KMZ completo só é gerado ao confirmar na última etapa. A pré-visualização da grade no
+            mapa fica no painel «Voo de calibração»; a análise detalhada abre na página da sessão.
+          </>
+        )}
+      </p>
 
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-            }}
-            className="flex min-h-0 flex-1 flex-col p-4 pt-3"
-          >
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+        }}
+        className="flex min-h-0 flex-1 flex-col"
+      >
             <div className="shrink-0" aria-label="Etapas do resumo">
               <p className="text-center text-xs text-neutral-500">
                 Etapa {step + 1} de {stepMeta.labels.length} — {stepMeta.labels[step]}
@@ -591,10 +577,8 @@ export function PreFlightChecklistModal({
                 </div>
               </div>
             </div>
-          </form>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+      </form>
+    </DialogPanel>
   )
 }
 

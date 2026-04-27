@@ -1,15 +1,15 @@
-import { useEffect } from "react"
-import { useFlightStore } from "@/features/flight-planner/stores/useFlightStore"
+import { useEffect } from "react";
+import { useFlightStore } from "@/features/flight-planner/stores/useFlightStore";
 
-const TYPING_SELECTOR = "input, textarea, select, [contenteditable='true']"
+const TYPING_SELECTOR = "input, textarea, select, [contenteditable='true']";
 
 function clampRotationDeg(n: number) {
-  return Math.min(180, Math.max(0, n))
+  return Math.min(180, Math.max(0, n));
 }
 
 function isTypingTarget(target: EventTarget | null) {
-  if (!target || !(target instanceof Element)) return false
-  return Boolean(target.closest(TYPING_SELECTOR))
+  if (!target || !(target instanceof Element)) return false;
+  return Boolean(target.closest(TYPING_SELECTOR));
 }
 
 /**
@@ -20,44 +20,44 @@ function isTypingTarget(target: EventTarget | null) {
 export function useFlightPlannerMapHotkeys() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented) return
-      if (e.ctrlKey || e.metaKey || e.altKey) return
-      if (isTypingTarget(e.target)) return
+      if (e.defaultPrevented) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTypingTarget(e.target)) return;
 
-      const k = e.key
+      const k = e.key;
       if (k === "d" || k === "D") {
-        e.preventDefault()
-        useFlightStore.getState().setPlannerInteractionMode("draw")
-        return
+        e.preventDefault();
+        useFlightStore.getState().setPlannerInteractionMode("draw");
+        return;
       }
       if (k === "n" || k === "N") {
-        e.preventDefault()
-        useFlightStore.getState().setPlannerInteractionMode("navigate")
-        return
+        e.preventDefault();
+        useFlightStore.getState().setPlannerInteractionMode("navigate");
+        return;
       }
       if (k === "u" || k === "U" || k === "z" || k === "Z") {
-        e.preventDefault()
-        useFlightStore.getState().popLastDraftPoint()
-        return
+        e.preventDefault();
+        useFlightStore.getState().popLastDraftPoint();
+        return;
       }
       if (k === "Escape") {
-        const { draftPoints, setDraftPoints } = useFlightStore.getState()
-        if (draftPoints.length === 0) return
-        e.preventDefault()
-        setDraftPoints([])
-        return
+        const { draftPoints, setDraftPoints } = useFlightStore.getState();
+        if (draftPoints.length === 0) return;
+        e.preventDefault();
+        setDraftPoints([]);
+        return;
       }
       if (k === "[" || k === "]") {
-        const { polygon, params, setParams } = useFlightStore.getState()
-        if (!polygon) return
-        e.preventDefault()
-        const delta = k === "[" ? -5 : 5
+        const { polygon, params, setParams } = useFlightStore.getState();
+        if (!polygon) return;
+        e.preventDefault();
+        const delta = k === "[" ? -5 : 5;
         setParams({
           rotationDeg: clampRotationDeg(params.rotationDeg + delta),
-        })
+        });
       }
-    }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [])
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 }

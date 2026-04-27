@@ -7,9 +7,16 @@ type DeckGLOverlayProps = {
   map: MapboxMap | null
   layers: Layer[]
   onWaypointClick?: (waypointId: string) => void
+  /** Clique em área do deck que não é marcador de waypoint (ex.: mapa, rota, frustum). */
+  onWaypointPickMiss?: () => void
 }
 
-export function DeckGLOverlay({ map, layers, onWaypointClick }: DeckGLOverlayProps) {
+export function DeckGLOverlay({
+  map,
+  layers,
+  onWaypointClick,
+  onWaypointPickMiss,
+}: DeckGLOverlayProps) {
   const overlayRef = useRef<MapboxOverlay | null>(null)
 
   useEffect(() => {
@@ -31,15 +38,18 @@ export function DeckGLOverlay({ map, layers, onWaypointClick }: DeckGLOverlayPro
     overlayRef.current?.setProps({
       layers,
       onClick: (info) => {
-        if (info.layer?.id !== 'waypoints') return false
-        const obj = info.object as { id?: string } | undefined
-        if (obj && typeof obj.id === 'string') {
-          onWaypointClick?.(obj.id)
+        if (info.layer?.id === 'waypoints') {
+          const obj = info.object as { id?: string } | undefined
+          if (obj && typeof obj.id === 'string') {
+            onWaypointClick?.(obj.id)
+            return true
+          }
         }
+        onWaypointPickMiss?.()
         return false
       },
     })
-  }, [layers, onWaypointClick])
+  }, [layers, onWaypointClick, onWaypointPickMiss])
 
   return null
 }

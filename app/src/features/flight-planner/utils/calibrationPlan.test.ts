@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import * as turf from '@turf/turf'
+import turfArea from '@turf/area'
+import { polygon } from '@turf/helpers'
 import { buildCalibrationMission, buildCalibrationPolygon, buildCalibrationStats } from '@/features/flight-planner/utils/calibrationPlan'
 
 const baseParams = {
@@ -13,7 +14,7 @@ const baseParams = {
 }
 
 /** ~500 m x 500 m em SP (aprox.) */
-const largeField = turf.polygon([
+const largeField = polygon([
   [
     [-47.06, -22.91],
     [-47.055, -22.91],
@@ -30,7 +31,7 @@ describe('buildCalibrationMission', () => {
     expect(m!.waypoints.length).toBeGreaterThanOrEqual(5)
     expect(m!.stats.estimatedPhotos).toBeGreaterThan(0)
     expect(m!.stats.estimatedTimeMin).toBeLessThan(5)
-    expect(turf.area(m!.calibrationPolygon)).toBeLessThan(turf.area(largeField))
+    expect(turfArea(m!.calibrationPolygon)).toBeLessThan(turfArea(largeField))
   })
 })
 

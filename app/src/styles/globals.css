@@ -65,6 +65,51 @@ body {
   overscroll-behavior: none;
 }
 
+/**
+ * Popups de ação no mapa (excluir waypoint/vértice) — alinhados a DialogPanel / vidro do sistema.
+ */
+.leaflet-popup.dd-map-action-popup {
+  margin: 0;
+}
+
+.leaflet-popup.dd-map-action-popup .leaflet-popup-content-wrapper {
+  padding: 0;
+  overflow: hidden;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #141414;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+}
+
+.leaflet-popup.dd-map-action-popup .leaflet-popup-content {
+  margin: 0;
+  min-width: 0;
+}
+
+.leaflet-popup.dd-map-action-popup .leaflet-popup-tip {
+  background: #141414;
+  box-shadow: none;
+}
+
+.leaflet-popup.dd-map-action-popup .leaflet-popup-close-button {
+  top: 0.55rem;
+  right: 0.45rem;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border-radius: 0.5rem;
+  font-size: 1.35rem;
+  line-height: 2rem;
+  font-weight: 500;
+  color: #a3a3a3;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.leaflet-popup.dd-map-action-popup .leaflet-popup-close-button:hover {
+  color: #fafafa;
+  background: rgba(255, 255, 255, 0.06);
+}
+
 /* Numeração da pré-visualização de calibração (DivIcon no planejador) */
 .leaflet-div-icon.calibration-photo-order-leaflet-icon {
   background: transparent !important;
@@ -91,22 +136,145 @@ body {
   @apply animate-pulse rounded-md bg-neutral-800;
 }
 
+/* DialogPanel — só opacity/transform (compositor); sem animar backdrop-filter */
+@keyframes dd-dialog-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes dd-dialog-overlay-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes dd-dialog-desktop-in {
+  from {
+    opacity: 0;
+    transform: translate3d(-50%, calc(-50% + 18px), 0) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(-50%, -50%, 0) scale(1);
+  }
+}
+
+@keyframes dd-dialog-desktop-out {
+  from {
+    opacity: 1;
+    transform: translate3d(-50%, -50%, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(-50%, calc(-50% + 10px), 0) scale(0.98);
+  }
+}
+
+@keyframes dd-dialog-mobile-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 100%, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes dd-dialog-mobile-out {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(0, 100%, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dd-dialog-overlay[data-state='open'],
+  .dd-dialog-overlay[data-state='closed'] {
+    animation: none !important;
+  }
+
+  .dd-dialog-overlay[data-state='open'] {
+    opacity: 1;
+  }
+
+  .dd-dialog-overlay[data-state='closed'] {
+    opacity: 0;
+  }
+
+  .dd-dialog-surface--desktop[data-state='open'],
+  .dd-dialog-surface--desktop[data-state='closed'],
+  .dd-dialog-surface--mobile[data-state='open'],
+  .dd-dialog-surface--mobile[data-state='closed'] {
+    animation: none !important;
+  }
+
+  .dd-dialog-surface--desktop[data-state='open'] {
+    opacity: 1;
+    transform: translate3d(-50%, -50%, 0);
+  }
+
+  .dd-dialog-surface--mobile[data-state='open'] {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @layer components {
   /** Painéis flutuantes estilo vidro (planejador, toolbar) */
+  /** backdrop-blur é aplicado condicionalmente via glassClass(tier) em JS — ver lib/deviceUtils.ts */
   .glass-surface {
-    @apply border border-white/10 bg-[rgba(18,18,20,0.55)] shadow-[0_8px_32px_rgba(0,0,0,0.35)] backdrop-blur-xl;
+    @apply border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.35)];
+  }
+
+  .glass-surface--tint-high {
+    @apply bg-[rgba(18,18,20,0.55)];
+  }
+
+  .glass-surface--tint-low {
+    @apply bg-[rgba(26,26,26,0.97)];
+  }
+
+  .glass-surface--blur {
+    @apply backdrop-blur-xl;
   }
 
   .glass-toolbar {
-    @apply glass-surface rounded-2xl px-3 py-2.5;
+    @apply glass-surface glass-surface--tint-high rounded-2xl px-3 py-2.5;
   }
 
   .glass-card {
-    @apply rounded-xl border border-white/10 bg-white/[0.06] p-4 shadow-inner backdrop-blur-lg;
+    @apply rounded-xl border border-white/10 bg-white/[0.06] p-4 shadow-inner;
   }
 
+  .glass-card--blur {
+    @apply backdrop-blur-lg;
+  }
+
+  /* blur opcional: maybeBackdropBlur(tier, "sm") em componentes (deviceUtils) */
   .glass-stat {
-    @apply rounded-lg border border-white/[0.08] bg-white/[0.04] px-2 py-1.5 backdrop-blur-sm;
+    @apply rounded-lg border border-white/[0.08] bg-white/[0.04] px-2 py-1.5;
+  }
+
+  /** CSS containment para painéis laterais — impede repaints no mapa durante input */
+  .panel-container {
+    contain: layout style;
+  }
+
+  /** Camada GPU antecipada para painéis com animação de slide */
+  .panel-animated {
+    will-change: transform;
   }
 
   .input-base {
@@ -115,5 +283,29 @@ body {
 
   .textarea-base {
     @apply min-h-28 w-full resize-none rounded-lg border border-neutral-800 bg-neutral-950 p-3 text-sm text-neutral-100 outline-none transition placeholder:text-neutral-500 focus-visible:border-primary-500;
+  }
+
+  .dd-dialog-overlay[data-state='open'] {
+    animation: dd-dialog-overlay-in 0.24s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  .dd-dialog-overlay[data-state='closed'] {
+    animation: dd-dialog-overlay-out 0.16s ease-out forwards;
+  }
+
+  .dd-dialog-surface--desktop[data-state='open'] {
+    animation: dd-dialog-desktop-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  .dd-dialog-surface--desktop[data-state='closed'] {
+    animation: dd-dialog-desktop-out 0.2s cubic-bezier(0.4, 0, 1, 1) forwards;
+  }
+
+  .dd-dialog-surface--mobile[data-state='open'] {
+    animation: dd-dialog-mobile-in 0.34s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+  }
+
+  .dd-dialog-surface--mobile[data-state='closed'] {
+    animation: dd-dialog-mobile-out 0.26s cubic-bezier(0.4, 0, 1, 1) forwards;
   }
 }

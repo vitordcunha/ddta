@@ -1,4 +1,7 @@
-import * as turf from "@turf/turf";
+import turfArea from "@turf/area";
+import centerOfMass from "@turf/center-of-mass";
+import intersect from "@turf/intersect";
+import { featureCollection, polygon } from "@turf/helpers";
 import type { Feature, MultiPolygon, Polygon, Position } from "geojson";
 import type { RouteStartRef } from "@/features/flight-planner/stores/useFlightStore";
 import { getDroneSpec } from "@/features/flight-planner/utils/droneSpecs";
@@ -40,7 +43,7 @@ export function axisAlignedSquareMeters(
     [centerLon - dx, centerLat + dy],
     [centerLon - dx, centerLat - dy],
   ];
-  return turf.polygon([ring]);
+  return polygon([ring]);
 }
 
 function largestPolygonFromIntersect(
@@ -52,8 +55,8 @@ function largestPolygonFromIntersect(
   let best: Feature<Polygon> | null = null;
   let bestArea = 0;
   for (const polyCoords of coords) {
-    const p = turf.polygon(polyCoords);
-    const a = turf.area(p);
+    const p = polygon(polyCoords);
+    const a = turfArea(p);
     if (a > bestArea) {
       bestArea = a;
       best = p;
@@ -69,9 +72,7 @@ function intersectCalibrationFootprint(
   sideM: number,
 ): Feature<Polygon> | null {
   const square = axisAlignedSquareMeters(centerLon, centerLat, sideM);
-  const inter = turf.intersect(
-    turf.featureCollection([missionPolygon, square]),
-  );
+  const inter = intersect(featureCollection([missionPolygon, square]));
   return largestPolygonFromIntersect(inter);
 }
 
@@ -139,10 +140,10 @@ export function buildCalibrationMission(
   params: FlightParams,
   routeStartRef: RouteStartRef | null,
 ): CalibrationMission | null {
-  const center = turf.centerOfMass(polygon).geometry.coordinates;
+  const center = centerOfMass(polygon).geometry.coordinates;
   const centerLon = center[0]!;
   const centerLat = center[1]!;
-  const areaM2 = Math.max(turf.area(polygon), 1);
+  const areaM2 = Math.max(turfArea(polygon), 1);
 
   let sideM = Math.sqrt(areaM2 * 0.11);
   sideM = Math.min(Math.max(sideM, 80), 140);
@@ -156,7 +157,7 @@ export function buildCalibrationMission(
       centerLat,
       sideM,
     );
-    if (!calPoly || turf.area(calPoly) < 50) {
+    if (!calPoly || turfArea(calPoly) < 50) {
       sideM = Math.min(sideM * 1.18, MAX_SIDE_M);
       continue;
     }

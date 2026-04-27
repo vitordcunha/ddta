@@ -40,7 +40,7 @@ function orthophotoTileUrl(
   runId: string | null,
 ): string {
   const apiBase = (
-    import.meta.env.VITE_API_URL ?? "http://localhost:8000/api/v1"
+    import.meta.env.VITE_API_URL ?? "http://192.168.1.39:8000/api/v1"
   ).replace(/\/$/, "");
   const params = new URLSearchParams();
   params.set("source", source);
@@ -74,14 +74,17 @@ export function ResultsMapInnerLayers({
 
   const { deviceTier, mode, provider } = useMapEngine();
   /** Nuvem esparsa pública neste painel: só 2D Leaflet (Mapbox/3D: sem essa layer aqui ainda). */
-  const use3DCloudCap = (provider === "mapbox" || provider === "google") && mode === "3d";
+  const use3DCloudCap =
+    (provider === "mapbox" || provider === "google") && mode === "3d";
   const sparseMax = getSparseCloudMaxPoints(deviceTier, use3DCloudCap);
 
   const sparseUnlocked = Boolean(project?.sparseCloudAvailable);
   const { data: sparseGeoJson } = useQuery({
     queryKey: ["sparse-cloud", projectId, sparseMax, use3DCloudCap],
     queryFn: () =>
-      projectsService.getSparseCloudGeoJson(projectId!, { maxPoints: sparseMax }),
+      projectsService.getSparseCloudGeoJson(projectId!, {
+        maxPoints: sparseMax,
+      }),
     enabled: Boolean(projectId) && sparseUnlocked,
     staleTime: 60_000,
   });

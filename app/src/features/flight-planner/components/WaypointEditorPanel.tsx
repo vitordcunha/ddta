@@ -3,6 +3,7 @@ import { Navigation, X } from 'lucide-react'
 import { Button } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { useMapEngine } from '@/features/map-engine/useMapEngine'
+import { glassSurfaceClass } from '@/lib/deviceUtils'
 import { createMapboxElevationService } from '@/features/flight-planner/services/elevationService'
 import { useFlightStore } from '@/features/flight-planner/stores/useFlightStore'
 import type { Waypoint } from '@/features/flight-planner/types/waypoint'
@@ -38,7 +39,7 @@ export function WaypointEditorPanel() {
   const strips = useFlightStore((s) => s.strips)
   const params = useFlightStore((s) => s.params)
   const setResult = useFlightStore((s) => s.setResult)
-  const { mapboxToken } = useMapEngine()
+  const { mapboxToken, deviceTier } = useMapEngine()
 
   const wp = useMemo(
     () => (selectedId ? waypoints.find((w) => w.id === selectedId) : undefined),
@@ -114,24 +115,33 @@ export function WaypointEditorPanel() {
     <div
       className={cn(
         'pointer-events-auto flex max-h-[min(85svh,640px)] w-[min(100%,20rem)] flex-col overflow-hidden',
-        'rounded-xl border border-white/12 bg-[#121212]/95 shadow-2xl backdrop-blur-md',
+        glassSurfaceClass(deviceTier),
+        'rounded-2xl shadow-2xl',
       )}
       role="dialog"
       aria-label="Editor de waypoint"
     >
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/10 px-3 py-2">
-        <h2 className="text-sm font-semibold text-neutral-100">Waypoint #{wp.index + 1}</h2>
+      <div className="flex shrink-0 items-start justify-between gap-2 border-b border-white/10 px-3.5 pb-3 pt-3.5">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
+            Waypoint
+          </p>
+          <h2 className="mt-0.5 text-sm font-semibold tracking-tight text-white">
+            Ponto #{wp.index + 1}
+          </h2>
+        </div>
         <button
           type="button"
           onClick={onClose}
-          className="touch-target flex size-9 items-center justify-center rounded-lg text-neutral-400 hover:bg-white/5 hover:text-white"
+          className="touch-target flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[#a3a3a3] transition hover:bg-white/10 hover:text-white"
           title="Fechar"
+          aria-label="Fechar painel do waypoint"
         >
           <X className="size-4" />
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden p-3 text-xs text-neutral-300 [scrollbar-gutter:stable]">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-3.5 pb-3 pt-1 text-xs text-neutral-300 [scrollbar-gutter:stable]">
         <Field label="Índice">
           <span className="font-mono text-neutral-200">{wp.index}</span>
         </Field>
@@ -200,10 +210,10 @@ export function WaypointEditorPanel() {
                 type="button"
                 onClick={() => setAltitudeMode(m)}
                 className={cn(
-                  'flex-1 rounded-md px-2 py-1.5 text-[11px] font-medium uppercase tracking-wide',
+                  'flex-1 rounded-lg border px-2 py-1.5 text-[11px] font-medium uppercase tracking-wide transition',
                   wp.altitudeMode === m
-                    ? 'bg-[#3ecf8e]/20 text-[#3ecf8e]'
-                    : 'text-neutral-500 hover:text-neutral-300',
+                    ? 'border-primary-500/40 bg-primary-500/12 text-white'
+                    : 'border-transparent text-neutral-500 hover:border-white/10 hover:bg-white/[0.06] hover:text-neutral-300',
                 )}
               >
                 {m}
@@ -317,7 +327,7 @@ export function WaypointEditorPanel() {
         </Field>
       </div>
 
-      <div className="shrink-0 space-y-2 border-t border-white/10 p-3">
+      <div className="shrink-0 space-y-2 border-t border-white/10 px-3.5 py-3">
         <Button
           type="button"
           variant="secondary"
@@ -344,7 +354,7 @@ export function WaypointEditorPanel() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
-      <div className="text-[10px] font-medium uppercase tracking-wide text-neutral-500">{label}</div>
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{label}</div>
       {children}
     </div>
   )

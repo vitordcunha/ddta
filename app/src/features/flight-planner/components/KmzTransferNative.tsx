@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Check, Loader2, RefreshCw, Smartphone, TriangleAlert } from 'lucide-react'
 import { Capacitor } from '@capacitor/core'
 import { Haptics, ImpactStyle } from '@capacitor/haptics'
-import { Button, Modal } from '@/components/ui'
+import { Button, DialogPanel } from '@/components/ui'
 import { useDjiMissions } from '@/hooks/useDjiMissions'
 import type { DjiMissionApp, DjiMissionListItem } from '@/native/djiMission'
 
@@ -24,7 +24,12 @@ async function successHaptic() {
   }
 }
 
-export function KmzTransferNative({
+export function KmzTransferNative(props: Props) {
+  if (!props.open) return null
+  return <KmzTransferNativeInner {...props} />
+}
+
+function KmzTransferNativeInner({
   open,
   onOpenChange,
   buildKmzArrayBuffer,
@@ -122,7 +127,7 @@ export function KmzTransferNative({
   }
 
   return (
-    <Modal open={open} onOpenChange={handleOpenChange} title="Enviar missão (Android)">
+    <DialogPanel open={open} onOpenChange={handleOpenChange} title="Enviar missão (Android)">
       <div className="space-y-4 text-sm text-neutral-300">
         <p className="flex items-start gap-2 text-xs leading-relaxed text-neutral-400">
           <Smartphone className="mt-0.5 size-4 shrink-0 text-primary-400/90" aria-hidden />
@@ -259,6 +264,6 @@ export function KmzTransferNative({
           </>
         )}
       </div>
-    </Modal>
+    </DialogPanel>
   )
 }

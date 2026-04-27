@@ -1,97 +1,161 @@
-import 'mapbox-gl/dist/mapbox-gl.css'
-import { useCallback, useEffect, useRef, useState } from 'react'
-import Map, { type MapRef } from 'react-map-gl/mapbox'
-import type { Map as MapboxMap } from 'mapbox-gl'
-import { Link } from 'react-router-dom'
-import type { WorkspacePanelId } from '@/constants/routes'
-import { toWorkspace } from '@/constants/routes'
-import type { WorkspaceMapWeatherTilesProps } from '@/components/map/useWorkspaceMapWeather'
-import { useMapEngine } from '@/features/map-engine/useMapEngine'
-import { useFlightStore } from '@/features/flight-planner/stores/useFlightStore'
-import { useResultsViewStore } from '@/features/results/stores/useResultsViewStore'
-import { useMapBootstrapFocus } from '@/hooks/useMapBootstrapFocus'
-import { useGeolocation } from '@/hooks/useGeolocation'
-import { MapboxBottomLeft } from '@/features/map-engine/providers/mapbox/MapboxBottomLeft'
-import { MapboxControls } from '@/features/map-engine/providers/mapbox/MapboxControls'
-import { MapboxLayers } from '@/features/map-engine/providers/mapbox/MapboxLayers'
-import { MapboxPlanOverlays } from '@/features/map-engine/providers/mapbox/MapboxPlanOverlays'
-import { MapboxDeckRouteOverlay } from '@/features/map-engine/providers/mapbox/MapboxDeckRouteOverlay'
-import { MapboxWeatherOverlays } from '@/features/map-engine/providers/mapbox/MapboxWeatherOverlays'
-import { useMapboxSync } from '@/features/map-engine/providers/mapbox/useMapboxSync'
-import type { MapLayerMouseEvent } from 'mapbox-gl'
-import { newPointOfInterest } from '@/features/flight-planner/types/poi'
+import "mapbox-gl/dist/mapbox-gl.css";
+import { useCallback, useEffect, useRef, useState } from "react";
+import Map, { type MapRef } from "react-map-gl/mapbox";
+import type { Map as MapboxMap } from "mapbox-gl";
+import { Link } from "react-router-dom";
+import type { WorkspacePanelId } from "@/constants/routes";
+import { toWorkspace } from "@/constants/routes";
+import type { WorkspaceMapWeatherTilesProps } from "@/components/map/useWorkspaceMapWeather";
+import { useMapEngine } from "@/features/map-engine/useMapEngine";
+import { useFlightStore } from "@/features/flight-planner/stores/useFlightStore";
+import { useResultsViewStore } from "@/features/results/stores/useResultsViewStore";
+import { useMapBootstrapFocus } from "@/hooks/useMapBootstrapFocus";
+import { useGeolocationContext } from "@/hooks/GeolocationContext";
+import { MapboxUserPositionMarker } from "@/features/map-engine/providers/mapbox/MapboxUserPositionMarker";
+import { MapboxControls } from "@/features/map-engine/providers/mapbox/MapboxControls";
+import { MapboxLayers } from "@/features/map-engine/providers/mapbox/MapboxLayers";
+import { MapboxPlanOverlays } from "@/features/map-engine/providers/mapbox/MapboxPlanOverlays";
+import { MapboxDeckRouteOverlay } from "@/features/map-engine/providers/mapbox/MapboxDeckRouteOverlay";
+import { MapboxWeatherOverlays } from "@/features/map-engine/providers/mapbox/MapboxWeatherOverlays";
+import { useMapboxSync } from "@/features/map-engine/providers/mapbox/useMapboxSync";
+import type { MapLayerMouseEvent } from "mapbox-gl";
+import { newPointOfInterest } from "@/features/flight-planner/types/poi";
 
-const MAP_STYLE = 'mapbox://styles/mapbox/satellite-streets-v12'
+const MAP_STYLE = "mapbox://styles/mapbox/satellite-streets-v12";
 
 type MapboxMapViewProps = {
-  panel: WorkspacePanelId
-  projectId: string | null
-  weatherTiles: WorkspaceMapWeatherTilesProps
-}
+  panel: WorkspacePanelId;
+  projectId: string | null;
+  weatherTiles: WorkspaceMapWeatherTilesProps;
+};
 
-export function MapboxMapView({ panel, projectId, weatherTiles }: MapboxMapViewProps) {
-  const showPlan = panel === 'plan' && Boolean(projectId)
-  const showResults = panel === 'results' && Boolean(projectId)
-  const showPlanOrResults = showPlan || showResults
-  const { locate } = useGeolocation()
-  const { mapboxToken, mode, center, zoom, setCenterZoom, deviceTier } = useMapEngine()
+export function MapboxMapView({
+  panel,
+  projectId,
+  weatherTiles,
+}: MapboxMapViewProps) {
+  const showPlan = panel === "plan" && Boolean(projectId);
+  const showResults = panel === "results" && Boolean(projectId);
+  const showPlanOrResults = showPlan || showResults;
+  const { locate } = useGeolocationContext();
+  const {
+    mapboxToken,
+    mode,
+    center,
+    zoom,
+    setCenterZoom,
+    deviceTier,
+    registerMapApi,
+  } = useMapEngine();
   const deckVis = useFlightStore((s) =>
-    panel === 'results' ? s.deckMapVisibility.results : s.deckMapVisibility.plan,
-  )
-  const showRealFlightPath = useResultsViewStore((s) => s.showRealFlightPath)
-  const selectedWaypointId = useFlightStore((s) => s.selectedWaypointId)
-  const poiPlacementActive = useFlightStore((s) => s.poiPlacementActive)
-  const bootstrapFocus = useMapBootstrapFocus({ locate })
-  const mapRef = useRef<MapRef>(null)
-  const [mapInstance, setMapInstance] = useState<MapboxMap | null>(null)
+    panel === "results"
+      ? s.deckMapVisibility.results
+      : s.deckMapVisibility.plan,
+  );
+  const showRealFlightPath = useResultsViewStore((s) => s.showRealFlightPath);
+  const selectedWaypointId = useFlightStore((s) => s.selectedWaypointId);
+  const poiPlacementActive = useFlightStore((s) => s.poiPlacementActive);
+  const bootstrapFocus = useMapBootstrapFocus({ locate });
+  const mapRef = useRef<MapRef>(null);
+  const [mapInstance, setMapInstance] = useState<MapboxMap | null>(null);
 
   useEffect(() => {
-    if (!bootstrapFocus) return
-    setCenterZoom(bootstrapFocus.center, bootstrapFocus.zoom)
-  }, [bootstrapFocus, setCenterZoom])
+    if (!bootstrapFocus) return;
+    setCenterZoom(bootstrapFocus.center, bootstrapFocus.zoom);
+  }, [bootstrapFocus, setCenterZoom]);
 
-  const { onMoveEnd } = useMapboxSync(mapRef)
+  const { onMoveEnd } = useMapboxSync(mapRef);
 
   useEffect(() => {
-    const map = mapRef.current?.getMap()
-    if (!map) return
-    const duration = deviceTier === 'high' ? 400 : 0
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+    const duration = deviceTier === "high" ? 400 : 0;
     map.easeTo({
-      pitch: mode === '3d' ? 45 : 0,
+      pitch: mode === "3d" ? 45 : 0,
       bearing: 0,
       duration,
       essential: true,
-    })
-  }, [mode, deviceTier])
+    });
+  }, [mode, deviceTier]);
 
   const onLoad = useCallback((e: { target: MapboxMap }) => {
-    setMapInstance(e.target)
-  }, [])
+    setMapInstance(e.target);
+  }, []);
 
   useEffect(() => {
-    if (!mapInstance || !showPlan || !poiPlacementActive) return
-    const canvas = mapInstance.getCanvas()
-    const prev = canvas.style.cursor
-    canvas.style.cursor = 'crosshair'
+    if (!mapInstance) return;
+    const PITCH_MIN = 0;
+    const PITCH_MAX = 60;
+    registerMapApi({
+      getCenter: () => {
+        const c = mapInstance.getCenter();
+        return [c.lat, c.lng];
+      },
+      disablePan: () => mapInstance.dragPan.disable(),
+      enablePan: () => mapInstance.dragPan.enable(),
+      disableDrawConflictGestures: () => {
+        mapInstance.touchZoomRotate.disableRotation();
+        mapInstance.touchPitch.disable();
+      },
+      enableDrawConflictGestures: () => {
+        mapInstance.touchZoomRotate.enableRotation();
+        mapInstance.touchPitch.enable();
+      },
+      setBearing: (bearing) => mapInstance.easeTo({ bearing }),
+      changePitch: (delta) => {
+        const current = mapInstance.getPitch();
+        const next = Math.max(PITCH_MIN, Math.min(PITCH_MAX, current + delta));
+        mapInstance.easeTo({ pitch: next });
+      },
+      changeZoom: (delta) => {
+        if (delta > 0) mapInstance.zoomIn();
+        else mapInstance.zoomOut();
+      },
+      fitBounds: (bounds, padding = 32) => {
+        const [[south, west], [north, east]] = bounds;
+        mapInstance.fitBounds(
+          [
+            [west, south],
+            [east, north],
+          ],
+          { padding, maxZoom: 20, duration: 600, essential: true },
+        );
+      },
+    });
+    return () => {
+      registerMapApi({});
+    };
+  }, [mapInstance, registerMapApi]);
+
+  useEffect(() => {
+    if (!mapInstance || !showPlan || !poiPlacementActive) return;
+    const canvas = mapInstance.getCanvas();
+    const prev = canvas.style.cursor;
+    canvas.style.cursor = "crosshair";
     const onClick = (e: MapLayerMouseEvent) => {
-      if (!useFlightStore.getState().poiPlacementActive) return
-      const st = useFlightStore.getState()
+      if (!useFlightStore.getState().poiPlacementActive) return;
+      const st = useFlightStore.getState();
       if (st.poi) {
-        st.setPoi({ ...st.poi, lat: e.lngLat.lat, lng: e.lngLat.lng })
+        st.setPoi({ ...st.poi, lat: e.lngLat.lat, lng: e.lngLat.lng });
       } else {
         st.setPoi(
-          newPointOfInterest(e.lngLat.lat, e.lngLat.lng, st.waypoints, st.params.altitudeM),
-        )
+          newPointOfInterest(
+            e.lngLat.lat,
+            e.lngLat.lng,
+            st.waypoints,
+            st.params.altitudeM,
+          ),
+        );
       }
-    }
-    mapInstance.on('click', onClick)
+    };
+    mapInstance.on("click", onClick);
     return () => {
-      mapInstance.off('click', onClick)
-      canvas.style.cursor = prev
-    }
-  }, [mapInstance, showPlan, poiPlacementActive])
+      mapInstance.off("click", onClick);
+      canvas.style.cursor = prev;
+    };
+  }, [mapInstance, showPlan, poiPlacementActive]);
 
-  const hasKey = mapboxToken.length > 0
+  const hasKey = mapboxToken.length > 0;
 
   if (!hasKey) {
     return (
@@ -102,12 +166,12 @@ export function MapboxMapView({ panel, projectId, weatherTiles }: MapboxMapViewP
         </p>
         <Link
           className="text-xs font-medium text-primary-400 underline-offset-2 hover:underline"
-          to={toWorkspace('/', { panel: 'settings' })}
+          to={toWorkspace("/", { panel: "settings" })}
         >
           Abrir configuracoes
         </Link>
       </div>
-    )
+    );
   }
 
   return (
@@ -120,12 +184,12 @@ export function MapboxMapView({ panel, projectId, weatherTiles }: MapboxMapViewP
           latitude: center[0],
           longitude: center[1],
           zoom,
-          pitch: mode === '3d' ? 45 : 0,
+          pitch: mode === "3d" ? 45 : 0,
           bearing: 0,
         }}
         onMoveEnd={onMoveEnd}
         onLoad={onLoad}
-        style={{ width: '100%', height: '100%' }}
+        style={{ width: "100%", height: "100%" }}
         attributionControl
       >
         <MapboxLayers map={mapInstance} mode={mode} deviceTier={deviceTier} />
@@ -136,8 +200,8 @@ export function MapboxMapView({ panel, projectId, weatherTiles }: MapboxMapViewP
         />
         {showPlanOrResults ? (
           <MapboxPlanOverlays
-            nativeShowRoute={mode !== '3d' && deckVis.showRoute}
-            nativeShowWaypoints={mode !== '3d' && deckVis.showWaypoints}
+            nativeShowRoute={mode !== "3d" && deckVis.showRoute}
+            nativeShowWaypoints={mode !== "3d" && deckVis.showWaypoints}
           />
         ) : null}
         <MapboxDeckRouteOverlay
@@ -146,15 +210,15 @@ export function MapboxMapView({ panel, projectId, weatherTiles }: MapboxMapViewP
           projectId={projectId}
           enabled={
             showPlanOrResults &&
-            (mode === '3d' ||
+            (mode === "3d" ||
               selectedWaypointId != null ||
               (showResults && showRealFlightPath))
           }
         />
         <MapboxControls />
-        <MapboxBottomLeft showResults={showResults} />
+        <MapboxUserPositionMarker />
         {/* WindIndicatorOverlay moved to WorkspacePage to respect --right-panel-width */}
       </Map>
     </div>
-  )
+  );
 }

@@ -6,6 +6,7 @@ import {
   owmMapTileSlug,
   type WeatherMapOverlayPreferences,
 } from '@/components/map/weather/mapWeatherTypes'
+import { WEATHER_MAP_TILE_ZOOM } from '@/components/map/weather/weatherMapLayerZoomBounds'
 
 export type RadarOverlayStatus = 'idle' | 'loading' | 'ready' | 'error'
 
@@ -78,7 +79,12 @@ export function MapboxWeatherOverlays({ overlay, openWeatherApiKey, onRadarStatu
         tileSize={256}
         attribution="Radar &copy; <a href='https://www.rainviewer.com/'>RainViewer</a>"
       >
-        <Layer id="dronedata-weather-radar-layer" type="raster" paint={{ 'raster-opacity': clampedOpacity }} />
+        <Layer
+          id="dronedata-weather-radar-layer"
+          type="raster"
+          maxzoom={WEATHER_MAP_TILE_ZOOM.radar!.max}
+          paint={{ 'raster-opacity': clampedOpacity }}
+        />
       </Source>
     )
   }
@@ -87,6 +93,7 @@ export function MapboxWeatherOverlays({ overlay, openWeatherApiKey, onRadarStatu
     if (!openWeatherApiKey) return null
     const owmLayer = owmMapTileSlug(layerId)
     if (!owmLayer) return null
+    const owmZ = WEATHER_MAP_TILE_ZOOM[layerId]!.max
     const url = `https://tile.openweathermap.org/map/${owmLayer}/{z}/{x}/{y}.png?appid=${encodeURIComponent(openWeatherApiKey)}`
     return (
       <Source
@@ -101,7 +108,7 @@ export function MapboxWeatherOverlays({ overlay, openWeatherApiKey, onRadarStatu
           id={`dronedata-weather-owm-layer-${layerId}`}
           type="raster"
           paint={{ 'raster-opacity': clampedOpacity }}
-          maxzoom={19}
+          maxzoom={owmZ}
         />
       </Source>
     )

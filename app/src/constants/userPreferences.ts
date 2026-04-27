@@ -7,6 +7,8 @@ export type UserPreferences = {
   openWeatherApiKey: string
   /** ID do modelo no catálogo da API; null = usar o marcado como padrão na API (ou o primeiro). */
   defaultDroneModelId: string | null
+  /** Modo crosshair para adição de vértices em modo desenho. Default: false (tap direto no mapa). */
+  crosshairDrawMode: boolean
 }
 
 export const USER_PREFERENCES_STORAGE_KEY = 'app:user-preferences'
@@ -18,6 +20,7 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   distanceUnit: 'm',
   openWeatherApiKey: '',
   defaultDroneModelId: null,
+  crosshairDrawMode: false,
 }
 
 export function readUserPreferencesFromStorage(): UserPreferences {

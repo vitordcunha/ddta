@@ -1,4 +1,12 @@
-import * as turf from '@turf/turf'
+import turfArea from '@turf/area'
+import turfBbox from '@turf/bbox'
+import turfBearing from '@turf/bearing'
+import centerOfMass from '@turf/center-of-mass'
+import distance from '@turf/distance'
+import { lineString, point } from '@turf/helpers'
+import lineIntersect from '@turf/line-intersect'
+import length from '@turf/length'
+import transformRotate from '@turf/transform-rotate'
 import type { Feature, LineString, Polygon } from 'geojson'
 import type { DroneSpec, FlightParams, FlightStats, Strip, Waypoint } from '@/features/flight-planner/types'
 
@@ -40,13 +48,13 @@ export function generateFlightGrid(
   options?: GenerateFlightGridOptions,
 ): Strip[] {
   const scanDirection = options?.scanDirection ?? 'ltr'
-  const bbox = turf.bbox(polygonGeoJSON)
-  const center = turf.centerOfMass(polygonGeoJSON).geometry.coordinates
+  const bbox = turfBbox(polygonGeoJSON)
+  const center = centerOfMass(polygonGeoJSON).geometry.coordinates
   const centerLat = center[1]
   const deltaLon = metersToDegreesLon(Math.max(spacings.sideSpacing, 3), centerLat)
 
-  const rotated = turf.transformRotate(polygonGeoJSON, -rotationDeg, { pivot: center })
-  const rotatedBBox = turf.bbox(rotated)
+  const rotated = transformRotate(polygonGeoJSON, -rotationDeg, { pivot: center })
+  const rotatedBBox = turfBbox(rotated)
   const strips: Strip[] = []
   let stripIndex = 0
 
@@ -57,19 +65,19 @@ export function generateFlightGrid(
   const orderedLons = scanDirection === 'rtl' ? [...lons].reverse() : lons
 
   for (const lon of orderedLons) {
-    const scanLine = turf.lineString([
+    const scanLine = lineString([
       [lon, rotatedBBox[1]],
       [lon, rotatedBBox[3]],
     ])
-    const intersections = turf.lineIntersect(scanLine, rotated)
+    const intersections = lineIntersect(scanLine, rotated)
     const points = intersections.features
       .map((f) => f.geometry.coordinates as [number, number])
       .sort((a, b) => a[1] - b[1])
 
     for (let i = 0; i + 1 < points.length; i += 2) {
       const [start, end] = [points[i], points[i + 1]]
-      const segment = turf.lineString([start, end])
-      const finalSegment = turf.transformRotate(segment, rotationDeg, { pivot: center }) as Feature<LineString>
+      const segment = lineString([start, end])
+      const finalSegment = transformRotate(segment, rotationDeg, { pivot: center }) as Feature<LineString>
       const coords = finalSegment.geometry.coordinates as [number, number][]
 
       strips.push({
@@ -81,8 +89,8 @@ export function generateFlightGrid(
   }
 
   if (strips.length === 0 && bbox) {
-    const fallback = turf.transformRotate(
-      turf.lineString([
+    const fallback = transformRotate(
+      lineString([
         [bbox[0], bbox[1]],
         [bbox[2], bbox[3]],
       ]),
@@ -108,11 +116,11 @@ export function generateWaypoints(strips: Strip[], altitudeM: number): Waypoint[
     const toward = coords[index + 1] ?? coords[index - 1]
     let heading = 0
     if (toward) {
-      const bearing = turf.bearing(
-        turf.point([coordinate[0], coordinate[1]]),
-        turf.point([toward[0], toward[1]]),
+      const bearingDeg = turfBearing(
+        point([coordinate[0], coordinate[1]]),
+        point([toward[0], toward[1]]),
       )
-      heading = ((bearing % 360) + 360) % 360
+      heading = ((bearingDeg % 360) + 360) % 360
     }
     return {
       id: newWaypointId(index),
@@ -134,9 +142,9 @@ function distanceMetersToFirstWaypoint(user: RouteStartRefLngLat, waypoints: Way
   if (waypoints.length === 0) {
     return Number.POSITIVE_INFINITY
   }
-  const from = turf.point([user.lng, user.lat])
-  const to = turf.point([waypoints[0]!.lng, waypoints[0]!.lat])
-  return turf.distance(from, to, { units: 'kilometers' }) * 1000
+  const from = point([user.lng, user.lat])
+  const to = point([waypoints[0]!.lng, waypoints[0]!.lat])
+  return distance(from, to, { units: 'kilometers' }) * 1000
 }
 
 function withReindexedWaypointIds(waypoints: Waypoint[]): Waypoint[] {
@@ -292,20 +300,20 @@ export function calculateStats(
   const gsdM = calculateGsd(params.altitudeM, specs)
   const footprint = calculateFootprint(gsdM, specs)
   const spacing = calculateSpacings(footprint, params.forwardOverlap, params.sideOverlap)
-  const areaHa = turf.area(polygon) / 10000
+  const areaHa = turfArea(polygon) / 10000
 
   let distanceKm = 0
   for (let i = 0; i < waypoints.length - 1; i += 1) {
-    const current = turf.point([waypoints[i].lng, waypoints[i].lat])
-    const next = turf.point([waypoints[i + 1].lng, waypoints[i + 1].lat])
-    distanceKm += turf.distance(current, next, { units: 'kilometers' })
+    const current = point([waypoints[i].lng, waypoints[i].lat])
+    const next = point([waypoints[i + 1].lng, waypoints[i + 1].lat])
+    distanceKm += distance(current, next, { units: 'kilometers' })
   }
 
   const estimatedTimeMin = (distanceKm * 1000) / Math.max(params.speedMs, 1) / 60
   const batteryCount = Math.max(1, Math.ceil(estimatedTimeMin / specs.batteryTimeMin))
   const photosPerStrip = strips.reduce((sum, strip) => {
-    const line = turf.lineString(strip.coordinates)
-    const stripDistanceM = turf.length(line, { units: 'kilometers' }) * 1000
+    const line = lineString(strip.coordinates)
+    const stripDistanceM = length(line, { units: 'kilometers' }) * 1000
     return sum + Math.max(1, Math.ceil(stripDistanceM / Math.max(spacing.photoSpacing, 1)))
   }, 0)
 

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useDeviceTier, maybeBackdropBlur } from '@/lib/deviceUtils'
 import { cn } from '@/lib/utils'
 
 type FloatingPanelProps = {
@@ -10,11 +11,16 @@ type FloatingPanelProps = {
 }
 
 export function FloatingPanel({ title, subtitle, children, className, headerRight }: FloatingPanelProps) {
+  const deviceTier = useDeviceTier()
   return (
     <div
       className={cn(
-        'flex max-h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-[#2e2e2e] bg-[rgba(23,23,23,0.88)] text-left shadow-[0_0_0_1px_rgba(46,46,46,0.4)] backdrop-blur-md',
-        'animate-fade-in',
+        'flex max-h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-[#2e2e2e] text-left shadow-[0_0_0_1px_rgba(46,46,46,0.4)]',
+        deviceTier === 'high'
+          ? 'bg-[rgba(23,23,23,0.88)]'
+          : 'bg-[rgba(26,26,26,0.97)]',
+        maybeBackdropBlur(deviceTier, 'md'),
+        deviceTier === 'high' && 'animate-fade-in',
         className,
       )}
     >

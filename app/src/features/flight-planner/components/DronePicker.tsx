@@ -1,7 +1,6 @@
-import * as Dialog from "@radix-ui/react-dialog";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Check, ChevronRight, Loader2, Plus, X } from "lucide-react";
-import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { Check, ChevronRight, Loader2, Plus } from "lucide-react";
+import { DialogPanel } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import type { FlightParams } from "@/features/flight-planner/types";
 import type { ApiDroneModel } from "@/features/flight-planner/types/droneModelApi";
@@ -11,8 +10,6 @@ import {
   flightProfileFromApiModel,
   profileToDroneSpec,
 } from "@/features/flight-planner/utils/flightDroneProfile";
-
-const DESKTOP = "(min-width: 1024px)";
 
 type DronePickerProps = {
   open: boolean;
@@ -75,7 +72,6 @@ export function DronePicker({
 }: DronePickerProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const isDesktop = useMediaQuery(DESKTOP);
   const useApiList = !isError && models && models.length > 0;
   const defaults = useApiList ? models!.filter((m) => !m.is_custom) : [];
   const customs = useApiList ? models!.filter((m) => m.is_custom) : [];
@@ -102,42 +98,13 @@ export function DronePicker({
     !params.droneModelId && params.droneModel === name;
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-[140] bg-black/55 backdrop-blur-[2px] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <Dialog.Content
-          aria-describedby={undefined}
-          onOpenAutoFocus={(e) => e.preventDefault()}
-          className={cn(
-            "fixed z-[141] flex max-h-[min(90dvh,640px)] flex-col border border-white/[0.12] bg-[#141414] shadow-2xl outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
-            isDesktop
-              ? "left-1/2 top-1/2 w-[min(92vw,28rem)] max-h-[min(85vh,560px)] -translate-x-1/2 -translate-y-1/2 rounded-2xl duration-200 zoom-in-95 data-[state=closed]:zoom-out-95"
-              : "inset-x-0 bottom-0 max-h-[min(88dvh,720px)] rounded-t-2xl duration-300 slide-in-from-bottom-4 data-[state=closed]:slide-out-to-bottom-4",
-          )}
-          style={{
-            paddingBottom: "max(1rem, env(safe-area-inset-bottom, 0px))",
-          }}
-        >
-          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/[0.08] px-4 py-3 pr-3">
-            <Dialog.Title className="text-base font-semibold tracking-tight text-neutral-100">
-              Selecionar drone
-            </Dialog.Title>
-            <Dialog.Close asChild>
-              <button
-                type="button"
-                aria-label="Fechar"
-                className="flex size-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-xl text-neutral-400 transition-colors hover:bg-white/[0.06] hover:text-neutral-100"
-              >
-                <X className="size-5" aria-hidden />
-              </button>
-            </Dialog.Close>
-          </div>
-
-          <div
-            className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4"
-            style={{ WebkitOverflowScrolling: "touch" }}
-          >
-            {useApiList && isLoading ? (
+    <DialogPanel
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Selecionar drone"
+      preventInitialFocus
+    >
+      {useApiList && isLoading ? (
               <div className="flex flex-col items-center justify-center gap-2 py-12 text-sm text-neutral-500">
                 <Loader2 className="size-8 animate-spin text-primary-400/80" />
                 Carregando catálogo…
@@ -313,9 +280,6 @@ export function DronePicker({
                 </button>
               </div>
             )}
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    </DialogPanel>
   );
 }

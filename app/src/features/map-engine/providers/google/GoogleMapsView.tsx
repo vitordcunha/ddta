@@ -8,7 +8,7 @@ import { useMapEngine } from "@/features/map-engine/useMapEngine";
 import { useFlightStore } from "@/features/flight-planner/stores/useFlightStore";
 import { useResultsViewStore } from "@/features/results/stores/useResultsViewStore";
 import { useMapBootstrapFocus } from "@/hooks/useMapBootstrapFocus";
-import { useGeolocation } from "@/hooks/useGeolocation";
+import { useGeolocationContext } from "@/hooks/GeolocationContext";
 import { newPointOfInterest } from "@/features/flight-planner/types/poi";
 import {
   closeDraftToPolygon,
@@ -16,7 +16,6 @@ import {
 } from "@/features/flight-planner/utils/polygonDraft";
 import { GoogleMapsLayers } from "@/features/map-engine/providers/google/GoogleMapsLayers";
 import { GoogleMapsDeckRouteOverlay } from "@/features/map-engine/providers/google/GoogleMapsDeckRouteOverlay";
-import { GoogleMapsBottomLeft } from "@/features/map-engine/providers/google/GoogleMapsBottomLeft";
 import { useGoogleMapsSync } from "@/features/map-engine/providers/google/useGoogleMapsSync";
 import { GoogleMapsPhotorealisticPane } from "@/features/map-engine/providers/google/GoogleMapsPhotorealisticPane";
 import type { Map3DElementInstance } from "@/features/map-engine/providers/google/GoogleMapsPhotorealisticPane";
@@ -57,7 +56,7 @@ function GoogleMapsViewInner({
   const showPlan = panel === "plan" && Boolean(projectId);
   const showResults = panel === "results" && Boolean(projectId);
   const showPlanOrResults = showPlan || showResults;
-  const { position, locate } = useGeolocation();
+  const { position, locate } = useGeolocationContext();
   const bootstrapFocus = useMapBootstrapFocus({ locate });
   const { mode, center, zoom, setCenterZoom } = useMapEngine();
   const deckVis = useFlightStore((s) =>
@@ -92,9 +91,7 @@ function GoogleMapsViewInner({
   });
 
   const [map, setMap] = useState<google.maps.Map | null>(null);
-  const [map3dElement, setMap3dElement] = useState<Map3DElementInstance | null>(
-    null,
-  );
+  const [, setMap3dElement] = useState<Map3DElementInstance | null>(null);
 
   useGoogleMapsSync(useImmersivePane ? null : map);
 
@@ -138,7 +135,10 @@ function GoogleMapsViewInner({
           }
           return;
         }
-        if (st.plannerInteractionMode !== "draw") return;
+        if (st.plannerInteractionMode !== "draw") {
+          if (st.selectedWaypointId) st.setSelectedWaypoint(null);
+          return;
+        }
         const latlng: [number, number] = [lat, lng];
         const { draftPoints, addDraftPoint, setDraftPoints, setPolygon } = st;
         if (isClickNearFirstVertex(latlng, draftPoints)) {
@@ -278,11 +278,6 @@ function GoogleMapsViewInner({
         />
       ) : null}
 
-      <GoogleMapsBottomLeft
-        map={useImmersivePane ? null : map}
-        map3dElement={useImmersivePane ? map3dElement : null}
-        showResults={showResults}
-      />
     </div>
   );
 }

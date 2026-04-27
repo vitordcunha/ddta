@@ -75,7 +75,7 @@ export function FlightPlannerExpandedModal({
             initial={narrowPortrait ? { y: "105%" } : { x: "105%" }}
             animate={narrowPortrait ? { y: 0 } : { x: 0 }}
             exit={narrowPortrait ? { y: "105%" } : { x: "105%" }}
-            transition={{ type: "spring", damping: 30, stiffness: 360 }}
+            transition={{ type: "spring", damping: 38, stiffness: 280 }}
             className={cn(
               "pointer-events-auto absolute flex max-h-full flex-col overflow-hidden border border-white/[0.12] bg-[#141414]/[0.97] shadow-[0_0_48px_rgba(0,0,0,0.45)] backdrop-blur-md",
               narrowPortrait

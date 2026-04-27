@@ -4,6 +4,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -20,6 +21,33 @@ import {
 } from "@/features/map-engine/utils/detectDeviceTier";
 
 const LS_PREFS = "map-engine:preferences";
+
+/**
+ * API imperativa exposta pelos providers de mapa (Leaflet, Mapbox, Google).
+ * Cada provider registra sua implementação via `registerMapApi`.
+ */
+export type MapImperativeApi = {
+  getCenter: () => [number, number]
+  disablePan: () => void
+  enablePan: () => void
+  /** Desabilita gestos que conflitam com modo desenho (rotate/tilt em 2 dedos). */
+  disableDrawConflictGestures: () => void
+  enableDrawConflictGestures: () => void
+  /** Reset do bearing (norte). */
+  setBearing: (bearing: number) => void
+  /** Altera pitch em `delta` graus, respeitando min/max do provider. */
+  changePitch: (delta: number) => void
+  /** Zoom in (delta > 0) ou zoom out (delta < 0). */
+  changeZoom: (delta: number) => void
+  /**
+   * Encaixa o view ao retangulo `[[south, west], [north, east]]` (lat, lng) — formato Leaflet/resultados.
+   * Opcional em provedores; se nao houver, o call e ignorado.
+   */
+  fitBounds: (
+    bounds: [[number, number], [number, number]],
+    padding?: number,
+  ) => void
+}
 
 type StoredPrefs = {
   provider?: MapProvider;
@@ -67,6 +95,17 @@ export type MapEngineContextValue = MapEngineState & {
   setMode: (mode: MapMode) => void;
   setCenterZoom: (center: [number, number], zoom: number) => void;
   refreshMapApiKeys: () => Promise<void>;
+  /** Registra a API imperativa do provider de mapa ativo. Substitui completamente a anterior. */
+  registerMapApi: (api: Partial<MapImperativeApi>) => void;
+  getMapCenter: () => [number, number];
+  disableMapPan: () => void;
+  enableMapPan: () => void;
+  disableDrawConflictGestures: () => void;
+  enableDrawConflictGestures: () => void;
+  setBearing: (bearing: number) => void;
+  changePitch: (delta: number) => void;
+  changeZoom: (delta: number) => void;
+  fitMapBounds: (bounds: [[number, number], [number, number]], padding?: number) => void;
 };
 
 export const MapEngineContext = createContext<MapEngineContextValue | null>(
@@ -113,6 +152,37 @@ export function MapEngineProvider({ children }: { children: ReactNode }) {
   // Detectado uma vez no boot; imutável durante a sessão.
   const [deviceTier] = useState<DeviceTier>(() => detectDeviceTier());
 
+  // API imperativa do provider ativo; substituída quando o provider monta.
+  const mapApiRef = useRef<Partial<MapImperativeApi>>({});
+  const registerMapApi = useCallback((api: Partial<MapImperativeApi>) => {
+    mapApiRef.current = api;
+  }, []);
+  const getMapCenter = useCallback((): [number, number] => {
+    return mapApiRef.current.getCenter?.() ?? center;
+  }, [center]);
+  const disableMapPan = useCallback(() => mapApiRef.current.disablePan?.(), []);
+  const enableMapPan = useCallback(() => mapApiRef.current.enablePan?.(), []);
+  const disableDrawConflictGestures = useCallback(
+    () => mapApiRef.current.disableDrawConflictGestures?.(),
+    [],
+  );
+  const enableDrawConflictGestures = useCallback(
+    () => mapApiRef.current.enableDrawConflictGestures?.(),
+    [],
+  );
+  const setBearing = useCallback(
+    (bearing: number) => mapApiRef.current.setBearing?.(bearing),
+    [],
+  );
+  const changePitch = useCallback(
+    (delta: number) => mapApiRef.current.changePitch?.(delta),
+    [],
+  );
+  const changeZoom = useCallback(
+    (delta: number) => mapApiRef.current.changeZoom?.(delta),
+    [],
+  );
+
   const loadKeys = useCallback(async () => {
     try {
       const data = await fetchMapApiKeys();
@@ -153,6 +223,26 @@ export function MapEngineProvider({ children }: { children: ReactNode }) {
       setZoom(nextZoom);
     },
     [],
+  );
+
+  const fitMapBounds = useCallback(
+    (bounds: [[number, number], [number, number]], padding: number = 32) => {
+      const fit = mapApiRef.current.fitBounds;
+      if (fit) {
+        fit(bounds, padding);
+        return;
+      }
+      const [[south, west], [north, east]] = bounds;
+      const lat = (south + north) / 2;
+      const lng = (west + east) / 2;
+      const latSpan = Math.max(1e-6, Math.abs(north - south));
+      const z = Math.min(
+        20,
+        Math.max(4, 14 - Math.log2(Math.max(latSpan, 0.0001) * 30)),
+      );
+      setCenterZoom([lat, lng], z);
+    },
+    [setCenterZoom],
   );
 
   const setProvider = useCallback((next: MapProvider) => {
@@ -199,6 +289,16 @@ export function MapEngineProvider({ children }: { children: ReactNode }) {
       setMode,
       setCenterZoom,
       refreshMapApiKeys: loadKeys,
+      registerMapApi,
+      getMapCenter,
+      disableMapPan,
+      enableMapPan,
+      disableDrawConflictGestures,
+      enableDrawConflictGestures,
+      setBearing,
+      changePitch,
+      changeZoom,
+      fitMapBounds,
     }),
     [
       provider,
@@ -212,6 +312,16 @@ export function MapEngineProvider({ children }: { children: ReactNode }) {
       setMode,
       setCenterZoom,
       loadKeys,
+      registerMapApi,
+      getMapCenter,
+      disableMapPan,
+      enableMapPan,
+      disableDrawConflictGestures,
+      enableDrawConflictGestures,
+      setBearing,
+      changePitch,
+      changeZoom,
+      fitMapBounds,
     ],
   );
 
