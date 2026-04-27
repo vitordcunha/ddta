@@ -1,8 +1,70 @@
+import type { PlannerBaseLayerId } from '@/features/flight-planner/constants/mapBaseLayers'
 import type { MapMode } from '@/features/map-engine/types'
 
-/** Basemap classico: satelite em 2D; hibrido em 3D (quando nao usamos o mapa imersivo). */
-export function googleWorkspaceClassicMapTypeId(mode: MapMode): string {
-  return mode === '3d' ? 'hybrid' : 'satellite'
+/**
+ * Roadmap escuro (JSON styling) — equivalente aproximado ao preset Leaflet "Escuro (Carto)".
+ * So aplica quando `mapTypeId` e roadmap.
+ */
+export const GOOGLE_WORKSPACE_ROADMAP_DARK_STYLES: google.maps.MapTypeStyle[] = [
+  { elementType: 'geometry', stylers: [{ color: '#242f3e' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#242f3e' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#746855' }] },
+  {
+    featureType: 'administrative.locality',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#d59563' }],
+  },
+  { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
+  {
+    featureType: 'poi.park',
+    elementType: 'geometry',
+    stylers: [{ color: '#263c3f' }],
+  },
+  {
+    featureType: 'road',
+    elementType: 'geometry',
+    stylers: [{ color: '#38414e' }],
+  },
+  {
+    featureType: 'road',
+    elementType: 'geometry.stroke',
+    stylers: [{ color: '#212a37' }],
+  },
+  {
+    featureType: 'road.highway',
+    elementType: 'geometry',
+    stylers: [{ color: '#746855' }],
+  },
+  {
+    featureType: 'road.highway',
+    elementType: 'geometry.stroke',
+    stylers: [{ color: '#1f2835' }],
+  },
+  { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#2f3948' }] },
+  {
+    featureType: 'water',
+    elementType: 'geometry',
+    stylers: [{ color: '#17263c' }],
+  },
+]
+
+/** Basemap classico Google: combina preset do planejador com 2D/3D. */
+export function googleWorkspaceClassicMapTypeId(
+  mode: MapMode,
+  baseLayer: PlannerBaseLayerId,
+): string {
+  if (baseLayer === 'satellite') {
+    return mode === '3d' ? 'hybrid' : 'satellite'
+  }
+  if (baseLayer === 'topo') return 'terrain'
+  if (baseLayer === 'streets' || baseLayer === 'dark') return 'roadmap'
+  return 'satellite'
+}
+
+export function googleWorkspaceClassicMapStyles(
+  baseLayer: PlannerBaseLayerId,
+): google.maps.MapTypeStyle[] | undefined {
+  return baseLayer === 'dark' ? GOOGLE_WORKSPACE_ROADMAP_DARK_STYLES : undefined
 }
 
 export function googleWorkspaceClassicTilt(mode: MapMode): number {
@@ -23,12 +85,14 @@ function controlPosition() {
 export function buildGoogleWorkspaceClassicMapOptions(opts: {
   mapId?: string
   mode: MapMode
+  plannerBaseLayer: PlannerBaseLayerId
 }): google.maps.MapOptions {
-  const { mapId, mode } = opts
+  const { mapId, mode, plannerBaseLayer } = opts
   const cp = controlPosition()
   return {
     mapId,
-    mapTypeId: googleWorkspaceClassicMapTypeId(mode),
+    mapTypeId: googleWorkspaceClassicMapTypeId(mode, plannerBaseLayer),
+    styles: googleWorkspaceClassicMapStyles(plannerBaseLayer),
     disableDefaultUI: false,
     zoomControl: false,
     mapTypeControl: false,

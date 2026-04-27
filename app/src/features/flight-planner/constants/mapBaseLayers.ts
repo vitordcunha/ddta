@@ -42,3 +42,19 @@ export function getPlannerBaseLayerConfig(
 ): BaseLayerConfig {
   return layers[id]
 }
+
+/** Estilo Mapbox GL alinhado aos mesmos presets do Leaflet (`PlannerMapBaseLayer`). */
+export function mapboxStyleUrlForPlannerBaseLayer(
+  id: PlannerBaseLayerId,
+): string {
+  switch (id) {
+    case "dark":
+      return "mapbox://styles/mapbox/dark-v11"
+    case "satellite":
+      return "mapbox://styles/mapbox/satellite-streets-v12"
+    case "streets":
+      return "mapbox://styles/mapbox/streets-v12"
+    case "topo":
+      return "mapbox://styles/mapbox/outdoors-v12"
+  }
+}

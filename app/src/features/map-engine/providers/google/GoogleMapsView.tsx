@@ -131,6 +131,7 @@ function GoogleMapsViewInner({
   const showRealFlightPath = useResultsViewStore((s) => s.showRealFlightPath);
   const selectedWaypointId = useFlightStore((s) => s.selectedWaypointId);
   const poiPlacementActive = useFlightStore((s) => s.poiPlacementActive);
+  const plannerBaseLayer = useFlightStore((s) => s.plannerBaseLayer);
   const plannerInteractionMode = useFlightStore(
     (s) => s.plannerInteractionMode,
   );
@@ -160,8 +161,13 @@ function GoogleMapsViewInner({
   useGoogleMapsSync(useImmersivePane ? null : map);
 
   const classicMapOptions = useMemo(
-    () => buildGoogleWorkspaceClassicMapOptions({ mapId, mode }),
-    [mapId, mode, isLoaded],
+    () =>
+      buildGoogleWorkspaceClassicMapOptions({
+        mapId,
+        mode,
+        plannerBaseLayer,
+      }),
+    [mapId, mode, plannerBaseLayer],
   );
 
   useEffect(() => {
@@ -176,7 +182,15 @@ function GoogleMapsViewInner({
     const mt = classicMapOptions.mapTypeId;
     if (typeof mt === "string") map.setMapTypeId(mt);
     else if (mt != null) map.setMapTypeId(mt);
-  }, [map, mode, useImmersivePane, classicMapOptions.mapTypeId]);
+    const st = classicMapOptions.styles;
+    map.setOptions({ styles: st && st.length > 0 ? st : [] });
+  }, [
+    map,
+    mode,
+    useImmersivePane,
+    classicMapOptions.mapTypeId,
+    classicMapOptions.styles,
+  ]);
 
   useEffect(() => {
     if (!map || !showPlan || useImmersivePane) return;
@@ -295,7 +309,10 @@ function GoogleMapsViewInner({
           center={{ lat: center[0], lng: center[1] }}
           zoom={zoom}
           mapTypeId={
-            googleWorkspaceClassicMapTypeId(mode) as google.maps.MapTypeId
+            googleWorkspaceClassicMapTypeId(
+              mode,
+              plannerBaseLayer,
+            ) as google.maps.MapTypeId
           }
           tilt={mode === "3d" ? 45 : 0}
           heading={0}

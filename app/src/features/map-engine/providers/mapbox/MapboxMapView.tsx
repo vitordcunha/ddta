@@ -19,9 +19,8 @@ import { MapboxDeckRouteOverlay } from "@/features/map-engine/providers/mapbox/M
 import { MapboxWeatherOverlays } from "@/features/map-engine/providers/mapbox/MapboxWeatherOverlays";
 import { useMapboxSync } from "@/features/map-engine/providers/mapbox/useMapboxSync";
 import type { MapLayerMouseEvent } from "mapbox-gl";
+import { mapboxStyleUrlForPlannerBaseLayer } from "@/features/flight-planner/constants/mapBaseLayers";
 import { newPointOfInterest } from "@/features/flight-planner/types/poi";
-
-const MAP_STYLE = "mapbox://styles/mapbox/satellite-streets-v12";
 
 type MapboxMapViewProps = {
   panel: WorkspacePanelId;
@@ -55,6 +54,8 @@ export function MapboxMapView({
   const showRealFlightPath = useResultsViewStore((s) => s.showRealFlightPath);
   const selectedWaypointId = useFlightStore((s) => s.selectedWaypointId);
   const poiPlacementActive = useFlightStore((s) => s.poiPlacementActive);
+  const plannerBaseLayer = useFlightStore((s) => s.plannerBaseLayer);
+  const mapStyle = mapboxStyleUrlForPlannerBaseLayer(plannerBaseLayer);
   const bootstrapFocus = useMapBootstrapFocus({ locate });
   const mapRef = useRef<MapRef>(null);
   const [mapInstance, setMapInstance] = useState<MapboxMap | null>(null);
@@ -180,7 +181,7 @@ export function MapboxMapView({
       <Map
         ref={mapRef}
         mapboxAccessToken={mapboxToken}
-        mapStyle={MAP_STYLE}
+        mapStyle={mapStyle}
         initialViewState={{
           latitude: center[0],
           longitude: center[1],
