@@ -27,7 +27,6 @@ import {
   Gauge,
   Info,
   Loader2,
-  MapPin,
   Maximize2,
   Mountain,
   Navigation,
@@ -97,7 +96,6 @@ import {
   readPreFlightKmzModalSkip,
   writePreFlightKmzModalSkip,
 } from "@/features/flight-planner/utils/preFlightChecklistStorage";
-import { useGeolocation } from "@/hooks/useGeolocation";
 import {
   projectsService,
   type CalibrationSessionListItem,
@@ -111,12 +109,6 @@ import {
   presetParamsFor,
 } from "@/features/flight-planner/utils/flightParamGuidance";
 import type { FlightQualityPresetId } from "@/features/flight-planner/utils/flightParamGuidance";
-import {
-  calculateOptimalRotation,
-  calculateFootprint,
-  calculateGsd,
-  calculateSpacings,
-} from "@/features/flight-planner/utils/waypointCalculator";
 import { FlightQualityScoreBadge } from "@/features/flight-planner/components/FlightQualityScoreBadge";
 import { MissionSummaryBar } from "@/features/flight-planner/components/MissionSummaryBar";
 import {
@@ -256,7 +248,6 @@ export function FlightPlannerConfigPanel({
     loadPlan,
     resetPlan,
     routeStartRef,
-    setRouteStartRef,
     plannerBaseLayer,
     calibrationSessionId,
     setCalibrationSessionId,
@@ -269,12 +260,6 @@ export function FlightPlannerConfigPanel({
   } = useFlightStore();
   const { mapboxToken } = useMapEngine();
   const hasMapboxKey = mapboxToken.trim().length > 0;
-  const {
-    locate,
-    position: geoPosition,
-    phase: geoPhase,
-    error: geoError,
-  } = useGeolocation();
   const {
     data: droneCatalog,
     isLoading: droneModelsLoading,
@@ -945,64 +930,6 @@ export function FlightPlannerConfigPanel({
         mission={
           <>
             <PlannerCollapsibleCard
-              title="Inicio da rota"
-              startsExpanded
-              riskLevel="none"
-            >
-              <p className="text-[11px] leading-snug text-neutral-500">
-                Ajusta a ordem das faixas e o sentido do percurso para o
-                primeiro waypoint ficar o mais proximo possivel da sua posicao
-                (GPS do navegador).
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  className="inline-flex items-center gap-1.5"
-                  disabled={!polygon || geoPhase === "loading"}
-                  onClick={() => {
-                    void locate().then((c) =>
-                      setRouteStartRef({ lat: c.lat, lng: c.lng }),
-                    );
-                  }}
-                >
-                  {geoPhase === "loading" ? (
-                    <Loader2 className="size-3.5 animate-spin" aria-hidden />
-                  ) : (
-                    <MapPin className="size-3.5" aria-hidden />
-                  )}
-                  Usar minha posicao
-                </Button>
-                {routeStartRef ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setRouteStartRef(null)}
-                  >
-                    Ordem padrao
-                  </Button>
-                ) : null}
-              </div>
-              {routeStartRef ? (
-                <p className="text-[11px] text-primary-300/90">
-                  Otimizacao ativa: inicio proximo de{" "}
-                  {routeStartRef.lat.toFixed(5)}, {routeStartRef.lng.toFixed(5)}
-                  .
-                </p>
-              ) : null}
-              {geoError ? (
-                <p className="text-[11px] text-red-300/95">{geoError}</p>
-              ) : null}
-              {!polygon ? (
-                <p className="text-[11px] text-neutral-500">
-                  Desenhe a area de voo no mapa para habilitar.
-                </p>
-              ) : null}
-            </PlannerCollapsibleCard>
-
-            <PlannerCollapsibleCard
               title="Parametros de voo"
               startsExpanded
               riskLevel="none"
@@ -1293,77 +1220,9 @@ export function FlightPlannerConfigPanel({
                 max={180}
                 step={1}
                 unit="º"
-                hint="Alinha as faixas ao formato da area, vento ou deslocamento. Tambem no mapa (barra lateral) ou com [ / ] no teclado."
+                hint="Alinha as faixas ao formato da area, vento ou deslocamento. No mapa use «Ajustes da rota» na barra lateral para GPS, auto-rotacao e ajuste fino; teclas [ / ] alternam o angulo."
                 onChange={(v) => setParams({ rotationDeg: v })}
               />
-              {polygon && (
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    className="inline-flex items-center gap-1.5 text-[11px]"
-                    disabled={geoPhase === "loading"}
-                    title="Calcula o angulo otimo e define o ponto de inicio mais proximo da sua posicao"
-                    onClick={() => {
-                      const spec = profileToDroneSpec(resolvedDroneProfile);
-                      const gsdM = calculateGsd(params.altitudeM, spec);
-                      const footprint = calculateFootprint(gsdM, spec);
-                      const spacings = calculateSpacings(
-                        footprint,
-                        params.forwardOverlap,
-                        params.sideOverlap,
-                      );
-
-                      const applyWithLocation = (userPos: {
-                        lat: number;
-                        lng: number;
-                      }) => {
-                        setRouteStartRef({
-                          lat: userPos.lat,
-                          lng: userPos.lng,
-                        });
-                        const optimal = calculateOptimalRotation(
-                          polygon,
-                          spacings,
-                          params.altitudeM,
-                          userPos,
-                        );
-                        setParams({ rotationDeg: optimal });
-                      };
-
-                      // Usa posicao em cache se disponivel, caso contrario requisita nova
-                      if (geoPosition) {
-                        applyWithLocation(geoPosition);
-                      } else {
-                        void locate()
-                          .then(applyWithLocation)
-                          .catch(() => {
-                            // Sem localizacao: otimiza so pelo angulo, sem alterar routeStartRef
-                            const optimal = calculateOptimalRotation(
-                              polygon,
-                              spacings,
-                              params.altitudeM,
-                            );
-                            setParams({ rotationDeg: optimal });
-                          });
-                      }
-                    }}
-                  >
-                    {geoPhase === "loading" ? (
-                      <Loader2 className="size-3.5 animate-spin" aria-hidden />
-                    ) : (
-                      <Compass className="size-3.5" aria-hidden />
-                    )}
-                    Auto-rotacao
-                  </Button>
-                  <p className="text-[10px] text-neutral-500">
-                    {routeStartRef
-                      ? "Angulo + inicio otimizados"
-                      : "Angulo + inicio pela sua posicao"}
-                  </p>
-                </div>
-              )}
               <Range
                 label="Velocidade"
                 value={params.speedMs}

@@ -3,6 +3,7 @@ import { Hand, Map as MapIcon, Pencil, SlidersHorizontal } from "lucide-react";
 import { useState, type RefObject, type SetStateAction } from "react";
 import { WeatherLayerMapControls } from "@/components/map/WeatherLayerMapControls";
 import { FlightPlannerRouteControls } from "@/features/flight-planner/components/FlightPlannerRouteControls";
+import { FlightPlannerRoutePositionControls } from "@/features/flight-planner/components/FlightPlannerRoutePositionControls";
 import { useFlightPlannerMapHotkeys } from "@/features/flight-planner/hooks/useFlightPlannerMapHotkeys";
 import { useFlightStore } from "@/features/flight-planner/stores/useFlightStore";
 import { closeDraftToPolygon } from "@/features/flight-planner/utils/polygonDraft";
@@ -149,14 +150,15 @@ export function PlanMapRail({
           <LeftRailIconPopoverTrigger
             deviceTier={deviceTier}
             open={moreOpen}
-            title="Ajustes da rota: rotacao, sobreposicoes"
-            aria-label="Abrir ajustes da rota: rotacao da grade, sobreposicoes"
+            title="Ajustes da rota: início, auto-rotação, grade e sobreposições"
+            aria-label="Abrir ajustes da rota: início por GPS, auto-rotação, grade e sobreposições"
             icon={SlidersHorizontal}
           />
           <LeftRailPopoverContent deviceTier={deviceTier} maxHeight="32rem">
             <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
               Ajustes da rota
             </p>
+            <FlightPlannerRoutePositionControls />
             <FlightPlannerRouteControls />
           </LeftRailPopoverContent>
         </Popover.Root>
