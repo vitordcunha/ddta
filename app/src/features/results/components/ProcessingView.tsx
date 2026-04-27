@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Boxes } from 'lucide-react'
 import { Button, Card } from '@/components/ui'
 import type { ProcessingLogEntry } from '@/features/results/types'
 
@@ -14,6 +14,7 @@ interface ProcessingViewProps {
   sparseCloudAvailable?: boolean
   sparseCloudTrackProgress?: number
   sparseCloudTrackHint?: string
+  onViewCloud3D?: () => void
   /** Reenfileira COG + copia de resultados se o worker travou apos o ODM (~95%). */
   onFinalizeStuckMain?: () => void
   onFinalizeStuckPreview?: () => void
@@ -30,6 +31,7 @@ export function ProcessingView({
   sparseCloudAvailable = false,
   sparseCloudTrackProgress = 0,
   sparseCloudTrackHint = '',
+  onViewCloud3D,
   onFinalizeStuckMain,
   onFinalizeStuckPreview,
 }: ProcessingViewProps) {
@@ -98,9 +100,21 @@ export function ProcessingView({
           <p className="text-[11px] leading-snug text-neutral-500">{sparseCloudTrackHint}</p>
         ) : null}
         {sparseCloudAvailable ? (
-          <p className="text-[11px] font-medium text-emerald-400/90">
-            Ative a camada &quot;Nuvem esparsa&quot; no mapa para visualizar.
-          </p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[11px] font-medium text-emerald-400/90">
+              Ative a camada &quot;Nuvem esparsa&quot; no mapa para visualizar.
+            </p>
+            {onViewCloud3D ? (
+              <button
+                type="button"
+                onClick={onViewCloud3D}
+                className="flex shrink-0 items-center gap-1 rounded px-1.5 py-1 text-[11px] text-[#3ecf8e] transition-colors hover:bg-[#3ecf8e]/5 hover:text-[#00c573]"
+              >
+                <Boxes className="size-3" />
+                Ver 3D
+              </button>
+            ) : null}
+          </div>
         ) : null}
       </div>
 

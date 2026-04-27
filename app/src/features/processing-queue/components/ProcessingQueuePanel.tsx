@@ -53,6 +53,7 @@ export function ProcessingQueuePanel() {
       queryKey: ["processing-queue"],
       queryFn: () => processingQueueService.getSnapshot(),
       refetchInterval: 5_000,
+      refetchIntervalInBackground: false,
       staleTime: 4_000,
     });
 

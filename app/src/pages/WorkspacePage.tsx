@@ -1,4 +1,6 @@
 import React, {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useRef,
@@ -9,18 +11,13 @@ import React, {
 import { useSearchParams } from "react-router-dom";
 import { FloatingPanel } from "@/components/ui/FloatingPanel";
 import { WorkspaceMapView } from "@/components/map/WorkspaceMapView";
-import { WeatherLayerMapControls } from "@/components/map/WeatherLayerMapControls";
 import { useWorkspaceMapWeather } from "@/components/map/useWorkspaceMapWeather";
 import { useWeatherMapLayerZoomClamp } from "@/components/map/useWeatherMapLayerZoomClamp";
 import { WorkspaceLayoutPanel } from "@/components/layout/WorkspaceLayoutPanel";
 import { WorkspaceTopBar } from "@/components/layout/WorkspaceTopBar";
-import { SettingsForm } from "@/components/workspace/SettingsForm";
 import { FlightPlannerCalculationBridge } from "@/features/flight-planner/components/FlightPlannerCalculationBridge";
 import { WaypointEditorPanel } from "@/features/flight-planner/components/WaypointEditorPanel";
-import {
-  FlightPlannerConfigPanel,
-  type FlightPlannerShellProps,
-} from "@/features/flight-planner/components/FlightPlannerConfigPanel";
+import type { FlightPlannerShellProps } from "@/features/flight-planner/components/FlightPlannerConfigPanel";
 import type { PlannerExpandedTabId } from "@/features/flight-planner/components/FlightPlannerExpandedModal";
 import {
   readPlannerShellPrefs,
@@ -28,13 +25,40 @@ import {
 } from "@/features/flight-planner/utils/plannerUiPersistence";
 import { WorkspaceMapLeftRail } from "@/components/map/WorkspaceMapLeftRail";
 import type { PersistedFlightPlan } from "@/features/flight-planner/stores/useFlightStore";
-import { ProjectsWorkspacePanel } from "@/features/projects/components/ProjectsWorkspacePanel";
 import { useProjects } from "@/features/projects/hooks/useProjects";
 import { ResultsMapToolsOverlay } from "@/features/results/components/ResultsMapToolsOverlay";
-import { ResultsWorkspacePanel } from "@/features/results/components/ResultsWorkspacePanel";
 import { useResultsViewStore } from "@/features/results/stores/useResultsViewStore";
-import { UploadWorkspacePanel } from "@/features/upload/components/UploadWorkspacePanel";
-import { ProcessingQueuePanel } from "@/features/processing-queue/components/ProcessingQueuePanel";
+
+const SettingsForm = lazy(() =>
+  import("@/components/workspace/SettingsForm").then((m) => ({
+    default: m.SettingsForm,
+  })),
+);
+const FlightPlannerConfigPanel = lazy(() =>
+  import(
+    "@/features/flight-planner/components/FlightPlannerConfigPanel"
+  ).then((m) => ({ default: m.FlightPlannerConfigPanel })),
+);
+const ProjectsWorkspacePanel = lazy(() =>
+  import(
+    "@/features/projects/components/ProjectsWorkspacePanel"
+  ).then((m) => ({ default: m.ProjectsWorkspacePanel })),
+);
+const ResultsWorkspacePanel = lazy(() =>
+  import("@/features/results/components/ResultsWorkspacePanel").then((m) => ({
+    default: m.ResultsWorkspacePanel,
+  })),
+);
+const UploadWorkspacePanel = lazy(() =>
+  import("@/features/upload/components/UploadWorkspacePanel").then((m) => ({
+    default: m.UploadWorkspacePanel,
+  })),
+);
+const ProcessingQueuePanel = lazy(() =>
+  import(
+    "@/features/processing-queue/components/ProcessingQueuePanel"
+  ).then((m) => ({ default: m.ProcessingQueuePanel })),
+);
 import { WindIndicatorOverlay } from "@/features/flight-planner/components/WindIndicatorOverlay";
 import type { DeviceTier } from "@/features/map-engine/utils/detectDeviceTier";
 import { type WorkspacePanelId, parseWorkspacePanel } from "@/constants/routes";
@@ -564,7 +588,15 @@ export function WorkspacePage() {
             onOpenChange={onRightPanelOpenChange}
             transitionPending={isRightPanelTransitionPending}
           >
-            {mainPanel}
+            <Suspense
+              fallback={
+                <div className="flex items-center justify-center p-8">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
+                </div>
+              }
+            >
+              {mainPanel}
+            </Suspense>
           </WorkspaceLayoutPanel>
         </div>
       </div>

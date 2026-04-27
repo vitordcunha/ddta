@@ -2,4 +2,3 @@ export type { IMapEngine, MapEngineState, MapMode, MapProvider } from '@/feature
 export { MapEngineProvider, MapEngineContext } from '@/features/map-engine/MapEngineContext'
 export type { MapEngineContextValue } from '@/features/map-engine/MapEngineContext'
 export { useMapEngine } from '@/features/map-engine/useMapEngine'
-export { LeafletMapView } from '@/features/map-engine/providers/leaflet/LeafletMapView'

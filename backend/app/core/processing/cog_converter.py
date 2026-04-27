@@ -12,17 +12,18 @@ from rio_cogeo.profiles import cog_profiles
 import rasterio
 
 tif_path = Path(sys.argv[1])
+compression = sys.argv[2] if len(sys.argv) > 2 else "deflate"
 tmp_path = tif_path.with_suffix(".tmp.tif")
-profile = cog_profiles.get("deflate")
+profile = cog_profiles.get(compression)
 with rasterio.open(tif_path) as src:
     cog_translate(src, str(tmp_path), profile, in_memory=False, quiet=True)
 tmp_path.replace(tif_path)
 """
 
 
-def convert_to_cog(tif_path: Path) -> None:
+def convert_to_cog(tif_path: Path, compression: str = "deflate") -> None:
     result = subprocess.run(
-        [sys.executable, "-c", _COG_SCRIPT, str(tif_path)],
+        [sys.executable, "-c", _COG_SCRIPT, str(tif_path), compression],
         capture_output=True,
         text=True,
         timeout=1800,

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Grid3X3, List } from 'lucide-react'
 import { Button } from '@/components/ui'
@@ -27,10 +27,21 @@ export function ProjectsWorkspacePanel() {
     return projects.filter((p) => p.name.toLowerCase().includes(debouncedQuery.toLowerCase()))
   }, [debouncedQuery, projects])
 
-  const closeCreateModal = () => {
+  const closeCreateModal = useCallback(() => {
     setIsCreateModalOpen(false)
     setEditingProject(null)
-  }
+  }, [])
+
+  const handleEdit = useCallback((project: Project) => {
+    setEditingProject(project)
+    setIsCreateModalOpen(true)
+  }, [])
+
+  const handleDelete = useCallback((project: Project) => {
+    setProjectToDelete(project)
+  }, [])
+
+  const handleOpenCreate = useCallback(() => setIsCreateModalOpen(true), [])
 
   return (
     <div className="space-y-4">
@@ -39,7 +50,7 @@ export function ProjectsWorkspacePanel() {
           <p className="font-mono text-[11px] uppercase tracking-[1.2px] text-neutral-500">Biblioteca</p>
           <p className="mt-0.5 text-sm text-[#898989]">{projects.length} projetos</p>
         </div>
-        <Button size="sm" onClick={() => setIsCreateModalOpen(true)}>
+        <Button size="sm" onClick={handleOpenCreate}>
           Novo projeto
         </Button>
       </div>
@@ -72,16 +83,13 @@ export function ProjectsWorkspacePanel() {
       </div>
 
       {filteredProjects.length === 0 ? (
-        <ProjectEmptyState onCreate={() => setIsCreateModalOpen(true)} />
+        <ProjectEmptyState onCreate={handleOpenCreate} />
       ) : (
         <ProjectGrid
           projects={filteredProjects}
           view={view}
-          onEdit={(project) => {
-            setEditingProject(project)
-            setIsCreateModalOpen(true)
-          }}
-          onDelete={(project) => setProjectToDelete(project)}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
         />
       )}
 

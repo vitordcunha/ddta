@@ -1,13 +1,20 @@
 import * as Popover from "@radix-ui/react-popover";
 import { AnimatePresence, motion } from "framer-motion";
-import { Crosshair, MapPin, Pentagon, Trash2, Undo2 } from "lucide-react";
-import { maybeBackdropBlur } from "@/lib/deviceUtils";
+import {
+  Crosshair,
+  MapPin,
+  MoreHorizontal,
+  Pentagon,
+  Trash2,
+  Undo2,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui";
 import type { DeviceTier } from "@/features/map-engine/utils/detectDeviceTier";
 import type { PointOfInterest } from "@/features/flight-planner/types/poi";
 import { LeftRailPopoverContent } from "./LeftRailPopoverContent";
 import { SidebarButton } from "./SidebarButton";
+import { SidebarDivider } from "./SidebarDivider";
 import { SidebarGroup } from "./SidebarGroup";
 
 type PlanMissionContextGroupProps = {
@@ -54,6 +61,7 @@ export function PlanMissionContextGroup({
           transition={{ duration: 0.2 }}
         >
           <SidebarGroup deviceTier={deviceTier} aria-label="Contexto de missao">
+            {/* POI — só quando há polígono fechado */}
             {hasPolygon ? (
               <>
                 <Popover.Root
@@ -62,30 +70,16 @@ export function PlanMissionContextGroup({
                   modal
                 >
                   <Popover.Trigger asChild>
-                    <button
-                      type="button"
+                    <SidebarButton
+                      icon={MapPin}
+                      label="Abrir opcoes de POI: posicionar ou remover"
                       title="Ponto de interesse (POI)"
-                      aria-label="Abrir opcoes de POI: posicionar ou remover"
-                      aria-pressed={poiMenuOpen}
-                      className={cn(
-                        "touch-manipulation flex h-12 w-12 items-center justify-center transition-all duration-150 md:max-lg:h-10 md:max-lg:w-10",
-                        poiPlacementActive
-                          ? "bg-primary-500/20 text-primary-400"
-                          : poiMenuOpen
-                            ? "bg-primary-500/15 text-primary-300"
-                            : "text-neutral-400 hover:bg-primary-500/10 hover:text-primary-300",
-                      )}
-                    >
-                      <MapPin
-                        className="size-[18px] md:max-lg:size-4"
-                        aria-hidden
-                      />
-                    </button>
+                      active={poiPlacementActive}
+                      open={poiMenuOpen}
+                      activeColor="green"
+                    />
                   </Popover.Trigger>
-                  <LeftRailPopoverContent
-                    deviceTier={deviceTier}
-                    maxHeight="22rem"
-                  >
+                  <LeftRailPopoverContent deviceTier={deviceTier} maxHeight="22rem">
                     <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
                       Ponto de interesse
                     </p>
@@ -97,9 +91,7 @@ export function PlanMissionContextGroup({
                         variant={poiPlacementActive ? "primary" : "outline"}
                         onClick={() => {
                           setPoiPlacementActive(!poiPlacementActive);
-                          if (!poiPlacementActive) {
-                            setPoiMenuOpen(false);
-                          }
+                          if (!poiPlacementActive) setPoiMenuOpen(false);
                         }}
                       >
                         <Crosshair className="mr-2 size-4 shrink-0" />
@@ -136,12 +128,11 @@ export function PlanMissionContextGroup({
                     </p>
                   </LeftRailPopoverContent>
                 </Popover.Root>
-                {hasDraft ? (
-                  <div className="mx-2 h-px bg-white/[0.07]" />
-                ) : null}
+                {hasDraft ? <SidebarDivider /> : null}
               </>
             ) : null}
 
+            {/* Fechar área — ação primária de desenho */}
             <SidebarButton
               icon={Pentagon}
               label="Fechar area"
@@ -149,23 +140,73 @@ export function PlanMissionContextGroup({
               onClick={onClose}
               activeColor="green"
             />
-            <div className="mx-2 h-px bg-white/[0.07]" />
-            <SidebarButton
-              icon={Undo2}
-              label="Desfazer ultimo ponto (U/Z)"
-              disabled={!hasDraft}
-              onClick={() => popLastDraftPoint()}
-            />
-            <div className="mx-2 h-px bg-white/[0.07]" />
-            <SidebarButton
-              icon={Trash2}
-              label="Limpar area"
-              onClick={onClear}
-              activeColor="red"
+            <SidebarDivider />
+
+            {/* Overflow: Desfazer + Limpar */}
+            <OverflowActionsPopover
+              deviceTier={deviceTier}
+              hasDraft={hasDraft}
+              onUndo={popLastDraftPoint}
+              onClear={onClear}
             />
           </SidebarGroup>
         </motion.div>
       ) : null}
     </AnimatePresence>
+  );
+}
+
+type OverflowActionsPopoverProps = {
+  deviceTier: DeviceTier;
+  hasDraft: boolean;
+  onUndo: () => void;
+  onClear: () => void;
+};
+
+function OverflowActionsPopover({
+  deviceTier,
+  hasDraft,
+  onUndo,
+  onClear,
+}: OverflowActionsPopoverProps) {
+  return (
+    <Popover.Root modal>
+      <Popover.Trigger asChild>
+        {/* open não está disponível via props neste padrão não-controlado;
+            o SidebarButton usa aria-pressed=false por padrão, ok aqui */}
+        <SidebarButton
+          icon={MoreHorizontal}
+          label="Mais acoes: desfazer e limpar"
+        />
+      </Popover.Trigger>
+      <LeftRailPopoverContent deviceTier={deviceTier} maxHeight="22rem">
+        <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
+          Acoes de desenho
+        </p>
+        <div className="flex flex-col gap-1.5">
+          <Button
+            type="button"
+            size="sm"
+            className="touch-manipulation h-11 w-full min-h-11 justify-start"
+            variant="outline"
+            disabled={!hasDraft}
+            onClick={onUndo}
+          >
+            <Undo2 className="mr-2 size-4 shrink-0" />
+            Desfazer ultimo ponto
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            className="touch-manipulation h-11 w-full min-h-11 justify-start text-red-300 hover:text-red-200"
+            variant="outline"
+            onClick={onClear}
+          >
+            <Trash2 className="mr-2 size-4 shrink-0" />
+            Limpar area
+          </Button>
+        </div>
+      </LeftRailPopoverContent>
+    </Popover.Root>
   );
 }

@@ -68,8 +68,6 @@ export function ResultsMapInnerLayers({
     queryKey: ["project", projectId],
     queryFn: () => projectsService.getById(projectId!),
     enabled: Boolean(projectId),
-    refetchInterval: (q) =>
-      q.state.data?.status === "processing" ? 4000 : false,
   });
 
   const { deviceTier, mode, provider } = useMapEngine();

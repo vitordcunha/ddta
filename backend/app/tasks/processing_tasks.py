@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from uuid import UUID
 
@@ -108,7 +109,7 @@ def preview_orthophoto_path(project_uuid: UUID) -> Path:
     return get_project_dir(project_uuid) / "preview-results" / "odm_orthophoto" / "odm_orthophoto.tif"
 
 
-def run_main_post_download_steps(project_uuid: UUID) -> dict[str, str]:
+def run_main_post_download_steps(project_uuid: UUID, fast: bool = False) -> dict[str, str]:
     """COG, contornos, cópia para results/ — executado após download ODM ou na task finalize."""
     project_dir = get_project_dir(project_uuid)
     odm_results_dir = project_dir / "odm-results"
@@ -116,11 +117,25 @@ def run_main_post_download_steps(project_uuid: UUID) -> dict[str, str]:
     dtm_tif = odm_results_dir / "odm_dem" / "dtm.tif"
     dsm_tif = odm_results_dir / "odm_dem" / "dsm.tif"
     elevation_tif = dtm_tif if dtm_tif.exists() else dsm_tif
-    if ortho_tif.exists():
-        convert_to_cog(ortho_tif)
-
     contour_output = project_dir / "results" / "contours.geojson"
-    contour_path = generate_contours(elevation_tif, contour_output, interval_m=1.0) if elevation_tif.exists() else None
+    compression = "lzw" if fast else "deflate"
+
+    contour_path: str | None = None
+
+    def _run_cog() -> None:
+        if ortho_tif.exists():
+            convert_to_cog(ortho_tif, compression=compression)
+
+    def _run_contours() -> None:
+        nonlocal contour_path
+        if elevation_tif.exists():
+            contour_path = generate_contours(elevation_tif, contour_output, interval_m=1.0)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        cog_future = pool.submit(_run_cog)
+        contour_future = pool.submit(_run_contours)
+        cog_future.result()
+        contour_future.result()
 
     assets = organize_results(project_uuid, odm_results_dir)
     if contour_path:
@@ -192,10 +207,20 @@ def process_images_task(self, project_id: str, image_paths: list[str], options: 
         if info.status != "completed":
             raise RuntimeError(f"ODM task finished with status '{info.status}'")
 
+        # Fetch reconstruction.json early (before the full asset download) so that
+        # sparse_cloud_path is set in the DB while the heavier assets are still downloading.
+        # This is the only reliable path for remote ODM nodes that don't share a filesystem.
+        if not sparse_cloud_detected:
+            try:
+                if client.fetch_reconstruction_json(odm_task_uuid, odm_results_dir):
+                    _ensure_sparse_cloud_geojson(project_uuid, odm_results_dir)
+            except Exception:  # noqa: BLE001
+                pass  # full download fallback below will cover it
+
         client.download_assets(odm_task_uuid, odm_results_dir)
         _ensure_sparse_cloud_geojson(project_uuid, odm_results_dir)
 
-        assets = run_main_post_download_steps(project_uuid)
+        assets = run_main_post_download_steps(project_uuid, fast=bool(options.get("fast-orthophoto")))
 
         with SyncSessionLocal() as db:
             _update_project_status(

@@ -1,7 +1,6 @@
 import * as Popover from "@radix-ui/react-popover";
-import { Hand, Map as MapIcon, Pencil, SlidersHorizontal } from "lucide-react";
-import { useState, type RefObject, type SetStateAction } from "react";
-import { WeatherLayerMapControls } from "@/components/map/WeatherLayerMapControls";
+import { SlidersHorizontal } from "lucide-react";
+import { useState } from "react";
 import { FlightPlannerRouteControls } from "@/features/flight-planner/components/FlightPlannerRouteControls";
 import { FlightPlannerRoutePositionControls } from "@/features/flight-planner/components/FlightPlannerRoutePositionControls";
 import { useFlightPlannerMapHotkeys } from "@/features/flight-planner/hooks/useFlightPlannerMapHotkeys";
@@ -12,17 +11,13 @@ import type { DeviceTier } from "@/features/map-engine/utils/detectDeviceTier";
 import type { PlanRailProps } from "./types";
 import { LeftRailIconPopoverTrigger } from "./LeftRailIconPopoverTrigger";
 import { LeftRailPopoverContent } from "./LeftRailPopoverContent";
+import { MapLayersPopover } from "./MapLayersPopover";
 import { MapLeftRailMapNavBlock } from "./MapLeftRailMapNavBlock";
-import { PlanMapStylePanel } from "./PlanMapStylePanel";
 import { PlanMissionContextGroup } from "./PlanMissionContextGroup";
-import { SidebarButton } from "./SidebarButton";
-import { SidebarGroup } from "./SidebarGroup";
+import { SidebarModeToggle } from "./SidebarModeToggle";
 
 export type PlanMapRailProps = PlanRailProps & {
   deviceTier: DeviceTier;
-  mapStyleOpen: boolean;
-  setMapStyleOpen: (value: SetStateAction<boolean>) => void;
-  mapStyleRef: RefObject<HTMLDivElement | null>;
 };
 
 export function PlanMapRail({
@@ -33,19 +28,14 @@ export function PlanMapRail({
   radarStatus,
   radarMessage,
   deviceTier,
-  mapStyleOpen,
-  setMapStyleOpen,
-  mapStyleRef,
 }: PlanMapRailProps) {
-  const [moreOpen, setMoreOpen] = useState(false);
+  const [routeSettingsOpen, setRouteSettingsOpen] = useState(false);
   const [poiMenuOpen, setPoiMenuOpen] = useState(false);
 
   useFlightPlannerMapHotkeys();
 
   const mode = useFlightStore((s) => s.plannerInteractionMode);
   const setMode = useFlightStore((s) => s.setPlannerInteractionMode);
-  const baseLayer = useFlightStore((s) => s.plannerBaseLayer);
-  const setPlannerBaseLayer = useFlightStore((s) => s.setPlannerBaseLayer);
   const draftPoints = useFlightStore((s) => s.draftPoints);
   const setDraftPoints = useFlightStore((s) => s.setDraftPoints);
   const popLastDraftPoint = useFlightStore((s) => s.popLastDraftPoint);
@@ -80,52 +70,26 @@ export function PlanMapRail({
 
   return (
     <>
-      <div className="shrink-0 overflow-visible">
-        <SidebarGroup deviceTier={deviceTier} aria-label="Ferramentas do mapa">
-          <SidebarButton
-            icon={Hand}
-            label="Navegar (N)"
-            active={mode === "navigate"}
-            onClick={() => setMode("navigate")}
-          />
-          <div className="mx-2 h-px bg-white/[0.07] md:max-lg:mx-1.5" />
-          <SidebarButton
-            icon={Pencil}
-            label="Desenhar (D)"
-            active={mode === "draw"}
-            activeColor="green"
-            onClick={() => setMode("draw")}
-          />
-          <div className="mx-2 h-px bg-white/[0.07] md:max-lg:mx-1.5" />
-
-          <div ref={mapStyleRef} className="relative z-[60]">
-            <SidebarButton
-              icon={MapIcon}
-              label="Estilo do mapa"
-              active={mapStyleOpen}
-              onClick={() => setMapStyleOpen((o) => !o)}
-            />
-            <PlanMapStylePanel
-              open={mapStyleOpen}
-              deviceTier={deviceTier}
-              baseLayer={baseLayer}
-              setBaseLayer={setPlannerBaseLayer}
-              onAfterLayerOrProviderChange={() => setMapStyleOpen(false)}
-            />
-          </div>
-          <WeatherLayerMapControls
-            placement="sidebar"
-            overlay={overlay}
-            setOverlay={setOverlay}
-            openWeatherApiKey={openWeatherApiKey}
-            radarStatus={radarStatus}
-            radarMessage={radarMessage}
-          />
-        </SidebarGroup>
+      {/* ── Ferramentas principais ── */}
+      <div className="flex shrink-0 flex-col pt-5 gap-1 overflow-visible">
+        <SidebarModeToggle
+          deviceTier={deviceTier}
+          mode={mode}
+          onModeChange={setMode}
+        />
+        <MapLayersPopover
+          deviceTier={deviceTier}
+          overlay={overlay}
+          setOverlay={setOverlay}
+          openWeatherApiKey={openWeatherApiKey}
+          radarStatus={radarStatus}
+          radarMessage={radarMessage}
+        />
       </div>
 
-      <div className="mt-1.5 min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <div className="flex flex-col gap-1.5">
+      {/* ── Contexto de desenho (aparece ao desenhar) ── */}
+      <div className="mt-1 min-h-0 overflow-y-auto overscroll-contain">
+        <div className="flex flex-col gap-1">
           <PlanMissionContextGroup
             show={showDrawActions}
             deviceTier={deviceTier}
@@ -145,13 +109,18 @@ export function PlanMapRail({
         </div>
       </div>
 
-      <div className="mt-auto flex shrink-0 flex-col gap-1.5 pt-1.5">
-        <Popover.Root open={moreOpen} onOpenChange={setMoreOpen} modal>
+      {/* ── Ajustes da rota + Navegação ── */}
+      <div className="mt-auto flex shrink-0 flex-col gap-1 pt-1">
+        <Popover.Root
+          open={routeSettingsOpen}
+          onOpenChange={setRouteSettingsOpen}
+          modal
+        >
           <LeftRailIconPopoverTrigger
             deviceTier={deviceTier}
-            open={moreOpen}
-            title="Ajustes da rota: início, auto-rotação, grade e sobreposições"
-            aria-label="Abrir ajustes da rota: início por GPS, auto-rotação, grade e sobreposições"
+            open={routeSettingsOpen}
+            title="Ajustes da rota: inicio, auto-rotacao, grade e sobreposicoes"
+            aria-label="Abrir ajustes da rota"
             icon={SlidersHorizontal}
           />
           <LeftRailPopoverContent deviceTier={deviceTier} maxHeight="32rem">

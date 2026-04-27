@@ -49,6 +49,26 @@ class ODMClient:
         task = self.node.get_task(task_uuid)
         task.download_assets(str(output_dir))
 
+    def fetch_reconstruction_json(self, task_uuid: str, dest_dir: Path) -> bool:
+        """
+        Attempts to download opensfm/reconstruction.json directly from the NodeODM assets
+        endpoint. Works once the ODM task has completed. Used to make the sparse cloud
+        available before the full download_assets() call completes.
+        Returns True if the file was saved (or already existed), False otherwise.
+        """
+        dest_file = dest_dir / "opensfm" / "reconstruction.json"
+        if dest_file.exists():
+            return True
+        try:
+            resp = self.node.get(f"/task/{task_uuid}/assets/opensfm/reconstruction.json", timeout=30)
+            if resp.status_code == 200 and resp.content:
+                dest_file.parent.mkdir(parents=True, exist_ok=True)
+                dest_file.write_bytes(resp.content)
+                return True
+        except Exception:  # noqa: BLE001
+            pass
+        return False
+
     def cancel_task(self, task_uuid: str) -> None:
         task = self.node.get_task(task_uuid)
         task.cancel()

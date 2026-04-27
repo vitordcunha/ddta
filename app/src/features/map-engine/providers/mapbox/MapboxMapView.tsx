@@ -108,8 +108,9 @@ export function MapboxMapView({
         mapInstance.easeTo({ pitch: next });
       },
       changeZoom: (delta) => {
-        if (delta > 0) mapInstance.zoomIn();
-        else mapInstance.zoomOut();
+        const a = { duration: 300 } as const;
+        if (delta > 0) mapInstance.zoomIn(a);
+        else mapInstance.zoomOut(a);
       },
       fitBounds: (bounds, padding = 32) => {
         const [[south, west], [north, east]] = bounds;

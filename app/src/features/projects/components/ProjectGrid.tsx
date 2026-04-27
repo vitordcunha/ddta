@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ProjectCard } from '@/features/projects/components/ProjectCard'
 import { ProjectListItem } from '@/features/projects/components/ProjectListItem'
@@ -10,7 +11,7 @@ type ProjectGridProps = {
   onDelete: (project: Project) => void
 }
 
-export function ProjectGrid({ projects, view, onEdit, onDelete }: ProjectGridProps) {
+export const ProjectGrid = memo(function ProjectGrid({ projects, view, onEdit, onDelete }: ProjectGridProps) {
   if (view === 'list') {
     return (
       <div className="flex flex-col gap-3">
@@ -48,4 +49,4 @@ export function ProjectGrid({ projects, view, onEdit, onDelete }: ProjectGridPro
       </AnimatePresence>
     </div>
   )
-}
+})

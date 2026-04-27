@@ -14,6 +14,17 @@ import { useMapBootstrapFocus } from "@/hooks/useMapBootstrapFocus";
 import { useMapEngine } from "@/features/map-engine/useMapEngine";
 import "leaflet/dist/leaflet.css";
 
+/** Duração em s alinhada ao padrão de `zoomAnimation` do Leaflet (~0.25s). */
+const SMOOTH_ZOOM_PAN: L.ZoomPanOptions = {
+  animate: true,
+  duration: 0.25,
+};
+
+const SMOOTH_FIT: L.FitBoundsOptions = {
+  ...SMOOTH_ZOOM_PAN,
+  maxZoom: 20,
+};
+
 /**
  * Registra a API imperativa do Leaflet no MapEngineContext para que componentes
  * agnósticos ao provider possam operar o mapa (pan, zoom, gestos).
@@ -36,8 +47,8 @@ function LeafletMapApiRegistrar() {
       setBearing: () => {},
       changePitch: () => {},
       changeZoom: (delta) => {
-        if (delta > 0) map.zoomIn();
-        else map.zoomOut();
+        if (delta > 0) map.zoomIn(1, SMOOTH_ZOOM_PAN);
+        else map.zoomOut(1, SMOOTH_ZOOM_PAN);
       },
       fitBounds: (bounds, padding = 32) => {
         const [[south, west], [north, east]] = bounds;
@@ -47,7 +58,7 @@ function LeafletMapApiRegistrar() {
             L.latLng(south, west),
             L.latLng(north, east),
           ),
-          { padding: pad, maxZoom: 20 },
+          { ...SMOOTH_FIT, padding: pad },
         );
       },
     });
@@ -86,7 +97,7 @@ function LeafletViewSync() {
     const sameLat = Math.abs(mc.lat - center[0]) < 1e-7;
     const sameLng = Math.abs(mc.lng - center[1]) < 1e-7;
     if (sameLat && sameLng && z === zoom) return;
-    map.setView(center, zoom, { animate: false });
+    map.setView(center, zoom, SMOOTH_ZOOM_PAN);
   }, [center, zoom, map]);
 
   return null;

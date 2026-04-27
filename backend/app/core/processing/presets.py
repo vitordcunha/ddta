@@ -14,17 +14,26 @@ PROCESSING_PRESETS: dict[str, dict] = {
     "fast": {
         "orthophoto-resolution": 5,
         "pc-quality": "low",
+        "feature-quality": "low",
         "dtm": False,
+        "fast-orthophoto": True,
+        "skip-3dmodel": True,
+        "skip-report": True,
+        "ignore-gsd": True,
     },
     "standard": {
         "orthophoto-resolution": 2,
         "pc-quality": "medium",
+        "feature-quality": "medium",
         "dtm": True,
+        "skip-3dmodel": True,
+        "skip-report": True,
     },
     "ultra": {
         "orthophoto-resolution": 1,
         "pc-quality": "ultra",
         "dtm": True,
+        "skip-report": True,
     },
 }
 

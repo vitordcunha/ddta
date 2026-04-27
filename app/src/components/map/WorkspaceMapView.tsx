@@ -1,7 +1,7 @@
 import { lazy, Suspense, type ReactNode } from "react";
 import type { WorkspacePanelId } from "@/constants/routes";
 import type { WorkspaceMapWeatherTilesProps } from "@/components/map/useWorkspaceMapWeather";
-import { LeafletMapView, useMapEngine } from "@/features/map-engine";
+import { useMapEngine } from "@/features/map-engine";
 
 const MapboxMapView = lazy(async () => {
   const m =
@@ -13,6 +13,12 @@ const GoogleMapsView = lazy(async () => {
   const m =
     await import("@/features/map-engine/providers/google/GoogleMapsView");
   return { default: m.GoogleMapsView };
+});
+
+const LeafletMapView = lazy(async () => {
+  const m =
+    await import("@/features/map-engine/providers/leaflet/LeafletMapView");
+  return { default: m.LeafletMapView };
 });
 
 function MapLoadingFallback() {
@@ -66,10 +72,12 @@ export function WorkspaceMapView({
     );
   }
   return (
-    <LeafletMapView
-      panel={panel}
-      projectId={projectId}
-      weatherTiles={weatherTiles}
-    />
+    <LazyWrapper>
+      <LeafletMapView
+        panel={panel}
+        projectId={projectId}
+        weatherTiles={weatherTiles}
+      />
+    </LazyWrapper>
   );
 }

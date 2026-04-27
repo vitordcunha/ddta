@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { RefreshCw, Trash2 } from "lucide-react";
+import { Boxes, RefreshCw, Trash2 } from "lucide-react";
 import type { ProjectStatus } from "@/types/project";
 import { Badge, Button, Card } from "@/components/ui";
 import { DownloadPanel } from "@/features/results/components/DownloadPanel";
@@ -17,6 +17,7 @@ import type { ProcessingPreset } from "@/features/results/types";
 import { extractCompletedStats } from "@/features/results/utils/extractCompletedStats";
 import { ProjectPurgeModal } from "@/features/projects/components/ProjectPurgeModal";
 import { useProjects } from "@/features/projects/hooks/useProjects";
+import { SparseCloudViewer } from "@/features/sparse-cloud";
 import { projectsService } from "@/services/projectsService";
 import { MapRouteDeckVisibilityToggles } from "@/features/map-engine/components/MapRouteDeckVisibilityToggles";
 
@@ -77,6 +78,7 @@ export function ResultsWorkspacePanel({
   const [enablePreview, setEnablePreview] = useState(false);
   const [redoPanelOpen, setRedoPanelOpen] = useState(false);
   const [purgeModalOpen, setPurgeModalOpen] = useState(false);
+  const [cloudViewerOpen, setCloudViewerOpen] = useState(false);
 
   useEffect(() => {
     if (status === "processing") setRedoPanelOpen(false);
@@ -142,6 +144,16 @@ export function ResultsWorkspacePanel({
           showRealFlightPath={showRealFlightPath}
           onRealFlightPathChange={setShowRealFlightPath}
         />
+        {sparseOnMap && (
+          <button
+            type="button"
+            onClick={() => setCloudViewerOpen(true)}
+            className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs text-[#3ecf8e] transition-colors hover:bg-[#3ecf8e]/5 hover:text-[#00c573]"
+          >
+            <Boxes className="size-3.5" />
+            Visualizar nuvem esparsa em 3D
+          </button>
+        )}
         <p className="text-xs text-neutral-500">
           Com MDS, MDT ou curvas, use o controlo vertical no mapa. Em
           ortomosaico, a opacidade é por execução no bloco abaixo.

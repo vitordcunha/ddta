@@ -1,29 +1,17 @@
-import { useRef, useState } from "react";
 import { useMapEngine } from "@/features/map-engine/useMapEngine";
 import { PlanMapRail } from "./PlanMapRail";
 import { ResultsMapRailContent } from "./ResultsMapRailContent";
 import type { PlanRailProps, WorkspaceMapLeftRailProps } from "./types";
-import { useMapStyleOutsideDismiss } from "./useMapStyleOutsideDismiss";
 
 export type { WorkspaceMapLeftRailProps } from "./types";
 
 export function WorkspaceMapLeftRail(props: WorkspaceMapLeftRailProps) {
   const { deviceTier } = useMapEngine();
-  const [mapStyleOpen, setMapStyleOpen] = useState(false);
-  const mapStyleRef = useRef<HTMLDivElement | null>(null);
-
-  useMapStyleOutsideDismiss(mapStyleRef, setMapStyleOpen);
 
   if (props.variant === "plan") {
     return (
       <div className="pointer-events-auto flex h-full min-h-0 w-min min-w-0 flex-1 flex-col items-stretch">
-        <PlanMapRail
-          {...props}
-          deviceTier={deviceTier}
-          mapStyleOpen={mapStyleOpen}
-          setMapStyleOpen={setMapStyleOpen}
-          mapStyleRef={mapStyleRef}
-        />
+        <PlanMapRail {...props} deviceTier={deviceTier} />
       </div>
     );
   }
