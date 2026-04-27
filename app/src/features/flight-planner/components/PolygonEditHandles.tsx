@@ -9,16 +9,19 @@ import {
 import type { Feature, Polygon } from "geojson";
 import L from "leaflet";
 import { Trash2 } from "lucide-react";
-import { Marker, Popup, Tooltip, useMap } from "react-leaflet";
-import { usePointerPressHighlightOverButton } from "@/features/flight-planner/hooks/usePointerPressHighlightOverButton";
+import { Marker, Tooltip, useMap } from "react-leaflet";
 import { useMapEngine } from "@/features/map-engine/useMapEngine";
 import {
   attachHoldStillLongPressToElement,
-  isReleaseOverElement,
   MAP_LONG_PRESS_MARKER_TOUCH_SLOP_PX,
 } from "@/features/flight-planner/utils/mapLongPress";
-import { cn } from "@/lib/utils";
 import { haptic } from "@/utils/haptics";
+import {
+  RadialContextMenu,
+  type RadialMenuItem,
+} from "@/features/map-engine/components/RadialContextMenu";
+import { toast } from "sonner";
+import { useFlightStore } from "@/features/flight-planner/stores/useFlightStore";
 
 export interface PolygonEditHandlesProps {
   polygon: Feature<Polygon> | null;
@@ -63,6 +66,16 @@ function mkMidpointIcon(): L.DivIcon {
 const VERTEX_ICON = mkVertexIcon(18, 1);
 const MIDPOINT_ICON = mkMidpointIcon();
 
+const VERTEX_MENU_ITEMS: RadialMenuItem[] = [
+  {
+    id: "delete",
+    icon: Trash2,
+    label: "Deletar vértice",
+    colorClass: "text-red-400",
+    bgClass: "bg-neutral-900/95 hover:bg-red-950/80",
+  },
+];
+
 interface VertexHandleProps {
   lat: number;
   lng: number;
@@ -87,23 +100,29 @@ function VertexHandle({
     detach: () => void;
   } | null>(null);
   const shouldIgnoreLongPressRef = useRef(false);
+  const pressCoordRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const openedViaHoldRef = useRef(false);
-  const deleteBtnRef = useRef<HTMLButtonElement | null>(null);
-  const [showDeleteMenu, setShowDeleteMenu] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
 
-  const performVertexDelete = useCallback(() => {
+  const performDelete = useCallback(() => {
     if (total <= 3) {
-      setShowDeleteMenu(false);
+      setShowMenu(false);
       return;
     }
-    setShowDeleteMenu(false);
+    setShowMenu(false);
+    haptic.medium();
     onDelete(index);
+    toast("Vértice removido", {
+      action: {
+        label: "Desfazer",
+        onClick: () => {
+          useFlightStore.getState().undo();
+          haptic.light();
+        },
+      },
+      duration: 8_000,
+    });
   }, [total, index, onDelete]);
-
-  const deletePressed = usePointerPressHighlightOverButton(
-    showDeleteMenu && total > 3,
-    deleteBtnRef,
-  );
 
   const cancelHold = useCallback(() => {
     holdCtlRef.current?.cancelActiveHold();
@@ -126,11 +145,11 @@ function VertexHandle({
   );
 
   useLayoutEffect(() => {
-    shouldIgnoreLongPressRef.current = showDeleteMenu;
-  }, [showDeleteMenu]);
+    shouldIgnoreLongPressRef.current = showMenu;
+  }, [showMenu]);
 
   useEffect(() => {
-    if (showDeleteMenu) return undefined;
+    if (showMenu) return undefined;
 
     let cancelled = false;
     let raf = 0;
@@ -150,10 +169,14 @@ function VertexHandle({
       ctl = attachHoldStillLongPressToElement(el, {
         shouldIgnore: () => shouldIgnoreLongPressRef.current,
         slopPx: MAP_LONG_PRESS_MARKER_TOUCH_SLOP_PX,
+        onStart: (coords) => {
+          pressCoordRef.current = coords;
+        },
         onFire: () => {
+          if (total <= 3) return; // sem ação disponível
           openedViaHoldRef.current = true;
           haptic.heavy();
-          setShowDeleteMenu(true);
+          setShowMenu(true);
         },
       });
       holdCtlRef.current = ctl;
@@ -167,112 +190,57 @@ function VertexHandle({
       ctl?.detach();
       holdCtlRef.current = null;
     };
-  }, [lat, lng, showDeleteMenu]);
+  }, [lat, lng, showMenu, total]);
 
-  useEffect(() => {
-    const m = markerRef.current;
-    if (!m) return undefined;
-    if (!showDeleteMenu) {
-      m.closePopup();
+  const handleMenuSelect = useCallback(
+    (id: string) => {
+      if (id === "delete") performDelete();
+      setShowMenu(false);
       openedViaHoldRef.current = false;
-      return undefined;
-    }
-    // O Popup do react-leaflet faz bind num efeito filho; abrir no próximo tick evita openPopup cedo demais.
-    const t = window.setTimeout(() => {
-      m.openPopup();
-    }, 0);
-    return () => clearTimeout(t);
-  }, [showDeleteMenu]);
+    },
+    [performDelete],
+  );
 
-  useEffect(() => {
-    if (!showDeleteMenu) return undefined;
-    const onRelease = (e: Event) => {
-      if (!openedViaHoldRef.current) return;
-      openedViaHoldRef.current = false;
-      if (total <= 3) return;
-      const btn = deleteBtnRef.current;
-      if (!btn || !isReleaseOverElement(btn, e)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      performVertexDelete();
-    };
-    window.addEventListener("pointerup", onRelease, true);
-    window.addEventListener("touchend", onRelease, true);
-    return () => {
-      window.removeEventListener("pointerup", onRelease, true);
-      window.removeEventListener("touchend", onRelease, true);
-    };
-  }, [showDeleteMenu, total, performVertexDelete]);
+  const handleMenuDismiss = useCallback(() => {
+    setShowMenu(false);
+    openedViaHoldRef.current = false;
+  }, []);
+
+  const menuItems = total > 3 ? VERTEX_MENU_ITEMS : [];
 
   return (
-    <Marker
-      ref={markerRef}
-      position={[lat, lng]}
-      icon={VERTEX_ICON}
-      draggable={!showDeleteMenu}
-      zIndexOffset={700}
-      eventHandlers={
-        {
-          dragstart: handleDragStart,
-          dragend: handleDragEnd,
-          popupclose: () => setShowDeleteMenu(false),
-        } as ComponentProps<typeof Marker>["eventHandlers"]
-      }
-    >
-      {!showDeleteMenu ? (
-        <Tooltip direction="top" offset={[0, -12]}>
-          Vértice {index + 1} — segure para excluir
-        </Tooltip>
+    <>
+      <Marker
+        ref={markerRef}
+        position={[lat, lng]}
+        icon={VERTEX_ICON}
+        draggable={!showMenu}
+        zIndexOffset={700}
+        eventHandlers={
+          {
+            dragstart: handleDragStart,
+            dragend: handleDragEnd,
+          } as ComponentProps<typeof Marker>["eventHandlers"]
+        }
+      >
+        {!showMenu ? (
+          <Tooltip direction="top" offset={[0, -12]}>
+            Vértice {index + 1}
+            {total > 3 ? " — segure para excluir" : ""}
+          </Tooltip>
+        ) : null}
+      </Marker>
+
+      {showMenu && menuItems.length > 0 ? (
+        <RadialContextMenu
+          position={pressCoordRef.current}
+          items={menuItems}
+          onSelect={handleMenuSelect}
+          onDismiss={handleMenuDismiss}
+          openedViaHold={openedViaHoldRef.current}
+        />
       ) : null}
-      {showDeleteMenu ? (
-        <Popup
-          offset={[0, -10]}
-          className="dd-map-action-popup"
-          closeButton
-          autoPan
-          keepInView
-        >
-          <div className="flex min-w-[12.5rem] max-w-[min(92vw,16rem)] flex-col">
-            <div className="border-b border-white/[0.08] px-3 py-2.5 pr-9">
-              <p className="text-sm font-semibold tracking-tight text-neutral-100">Vértice</p>
-              <p className="mt-1 text-xs text-neutral-500">Vértice {index + 1} do polígono</p>
-            </div>
-            <div className="flex flex-col gap-0.5 p-2">
-              {total > 3 ? (
-                <button
-                  ref={deleteBtnRef}
-                  type="button"
-                  className={cn(
-                    "touch-target flex min-h-11 w-full items-center gap-2 rounded-lg border border-transparent px-3 text-left text-sm font-medium text-red-400 transition-colors duration-150",
-                    "hover:border-red-500/25 hover:bg-red-500/10 active:bg-red-500/15",
-                    deletePressed &&
-                      "border-red-500/35 bg-red-500/16 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
-                  )}
-                  onClick={performVertexDelete}
-                >
-                  <Trash2 className="size-4 shrink-0 opacity-90" aria-hidden />
-                  Deletar vértice
-                </button>
-              ) : (
-                <p className="px-1 py-1.5 text-xs leading-snug text-neutral-400">
-                  Polígono precisa de pelo menos 3 vértices.
-                </p>
-              )}
-              <button
-                type="button"
-                className={cn(
-                  "touch-target flex min-h-11 w-full items-center justify-center rounded-lg px-3 text-sm text-neutral-200 transition-colors",
-                  "hover:bg-white/[0.06] active:bg-white/[0.08]",
-                )}
-                onClick={() => setShowDeleteMenu(false)}
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        </Popup>
-      ) : null}
-    </Marker>
+    </>
   );
 }
 

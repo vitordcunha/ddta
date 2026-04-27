@@ -99,6 +99,7 @@ export function attachHoldStillLongPressToElement(
   el: HTMLElement,
   callbacks: {
     onFire: () => void
+    onStart?: (coords: { x: number; y: number }) => void
     shouldIgnore?: () => boolean
     slopPx?: number
   },
@@ -122,6 +123,7 @@ export function attachHoldStillLongPressToElement(
     cancelActiveHold()
     const pt = getEventClientPoint(ev)
     if (!pt) return
+    callbacks.onStart?.({ x: pt.clientX, y: pt.clientY })
     holdDispose = subscribeHoldStillLongPress(pt, callbacks.onFire, {
       slopPx: callbacks.slopPx ?? MAP_LONG_PRESS_MOVE_SLOP_PX,
     })

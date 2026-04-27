@@ -62,7 +62,8 @@ type WorkspaceLayoutPanelProps = {
 /**
  * Mobile/tablet: painel lateral direito fixo (altura total) com handle à esquerda.
  * Arraste o handle para a direita para fechar; toque no handle para fechar.
- * Colapsado: FAB fixo no canto direito.
+ * Colapsado: FAB fixo no canto direito. O conteúdo permanece montado (slide + visibility)
+ * para não remontar o planejador a cada abertura — menos JS e sem re-hidratar o store.
  *
  * Desktop (min-width 1280px): coluna à direita com aba de toggle.
  */
@@ -89,18 +90,13 @@ export function WorkspaceLayoutPanel({
     stateRef.current = state;
   }, [state]);
 
-  const onDesktopSlideAnimationComplete = useCallback(() => {
+  /** Fim da animação de fechamento: libera layoutHold e sincroniza `rightPanelOpen` no pai. */
+  const onPanelSlideAnimationComplete = useCallback(() => {
     const { show: s, layoutHold: lh } = stateRef.current;
     if (!s && lh) {
       dispatch({ type: "exitDone" });
       onOpenChange?.(false);
     }
-  }, [onOpenChange]);
-
-  const onMobileExitComplete = useCallback(() => {
-    if (!stateRef.current.layoutHold) return;
-    dispatch({ type: "exitDone" });
-    onOpenChange?.(false);
   }, [onOpenChange]);
 
   const onToggle = useCallback(() => {
@@ -160,7 +156,7 @@ export function WorkspaceLayoutPanel({
           animate={show ? "animate" : "exit"}
           custom={reduced}
           transition={panelTransition}
-          onAnimationComplete={onDesktopSlideAnimationComplete}
+          onAnimationComplete={onPanelSlideAnimationComplete}
           style={{ pointerEvents: show && layoutOpen ? "auto" : "none" }}
         >
           <div className="panel-container min-h-0 w-full min-w-0 flex-1 overflow-x-hidden [overscroll-behavior:contain]">
@@ -195,66 +191,62 @@ export function WorkspaceLayoutPanel({
         )}
       </AnimatePresence>
 
-      {/* Painel lateral direito — fixo, altura total, handle à esquerda */}
-      <AnimatePresence onExitComplete={onMobileExitComplete}>
-        {show && (
-          <motion.div
-            key="workspace-mobile-side-panel"
-            role="region"
-            aria-label="Painel do workspace"
-            className={cn(
-              "panel-animated pointer-events-auto fixed z-50 flex flex-row overflow-hidden",
-              "border-l border-white/10 shadow-[-6px_0_32px_rgba(0,0,0,0.5)]",
-              deviceTier === "high"
-                ? `bg-[rgba(18,18,20,0.92)] ${maybeBackdropBlur(deviceTier, "sm")}`
-                : "bg-[rgba(26,26,26,0.97)]",
-            )}
-            style={{
-              top: "max(3.5rem, calc(3.5rem + env(safe-area-inset-top, 0px)))",
-              bottom: "env(safe-area-inset-bottom, 0px)",
-              right: "env(safe-area-inset-right, 0px)",
-              width: "min(88vw, 360px)",
-            }}
-            drag="x"
-            dragControls={dragControls}
-            dragListener={false}
-            dragConstraints={{ left: 0, right: 0 }}
-            dragElastic={{ left: 0, right: 0.3 }}
-            onDragEnd={handleMobileDragEnd}
-            variants={mobileSidePanelSlide}
-            initial="initial"
-            animate="animate"
-            exit="exit"
-            custom={reduced}
-            transition={panelTransition}
-          >
-            {/* Handle rail — arraste para fechar, toque para fechar */}
-            <button
-              type="button"
-              title="Fechar painel"
-              className="group flex w-6 shrink-0 touch-none cursor-grab items-center justify-center self-stretch border-r border-white/[0.06] active:cursor-grabbing"
-              onPointerDown={(e) => dragControls.start(e)}
-              onClick={onToggle}
-            >
-              <span
-                className="h-12 w-1 rounded-full bg-white/25 transition-all duration-200 motion-safe:animate-[dd-handle-breathe_3s_ease-in-out_infinite] group-active:bg-white/50"
-                aria-hidden
-              />
-            </button>
-
-            {/* Conteúdo do painel */}
-            <div
-              className={cn(
-                "panel-container min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain [scrollbar-gutter:stable]",
-                transitionPending &&
-                  "opacity-90 transition-opacity duration-150 motion-reduce:transition-none",
-              )}
-            >
-              {children}
-            </div>
-          </motion.div>
+      <motion.div
+        key="workspace-mobile-side-panel"
+        role="region"
+        aria-label="Painel do workspace"
+        aria-hidden={!show}
+        className={cn(
+          "panel-animated fixed z-50 flex flex-row overflow-hidden",
+          "border-l border-white/10 shadow-[-6px_0_32px_rgba(0,0,0,0.5)]",
+          deviceTier === "high"
+            ? `bg-[rgba(18,18,20,0.92)] ${maybeBackdropBlur(deviceTier, "sm")}`
+            : "bg-[rgba(26,26,26,0.97)]",
         )}
-      </AnimatePresence>
+        style={{
+          top: "max(3.5rem, calc(3.5rem + env(safe-area-inset-top, 0px)))",
+          bottom: "env(safe-area-inset-bottom, 0px)",
+          right: "env(safe-area-inset-right, 0px)",
+          width: "min(88vw, 360px)",
+          pointerEvents: show || layoutHold ? "auto" : "none",
+          visibility: show || layoutHold ? "visible" : "hidden",
+        }}
+        drag={show ? "x" : false}
+        dragControls={dragControls}
+        dragListener={false}
+        dragConstraints={{ left: 0, right: 0 }}
+        dragElastic={{ left: 0, right: 0.3 }}
+        onDragEnd={handleMobileDragEnd}
+        variants={mobileSidePanelSlide}
+        initial={false}
+        animate={show ? "animate" : "exit"}
+        custom={reduced}
+        transition={panelTransition}
+        onAnimationComplete={onPanelSlideAnimationComplete}
+      >
+        <button
+          type="button"
+          title="Fechar painel"
+          className="group flex w-6 shrink-0 touch-none cursor-grab items-center justify-center self-stretch border-r border-white/[0.06] active:cursor-grabbing"
+          onPointerDown={(e) => dragControls.start(e)}
+          onClick={onToggle}
+        >
+          <span
+            className="h-12 w-1 rounded-full bg-white/25 transition-all duration-200 motion-safe:animate-[dd-handle-breathe_3s_ease-in-out_infinite] group-active:bg-white/50"
+            aria-hidden
+          />
+        </button>
+
+        <div
+          className={cn(
+            "panel-container min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain [scrollbar-gutter:stable]",
+            transitionPending &&
+              "opacity-90 transition-opacity duration-150 motion-reduce:transition-none",
+          )}
+        >
+          {children}
+        </div>
+      </motion.div>
     </>
   );
 }

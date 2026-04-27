@@ -13,14 +13,13 @@ import turfBbox from "@turf/bbox";
 import centerOfMass from "@turf/center-of-mass";
 import { featureCollection, lineString, polygon } from "@turf/helpers";
 import type * as GeoJSON from "geojson";
-import { Trash2 } from "lucide-react";
+import { Crosshair, MapPin, Navigation, Trash2 } from "lucide-react";
 import L, { type DivIcon } from "leaflet";
 import {
   CircleMarker,
   Marker,
   Polygon,
   Polyline,
-  Popup,
   Tooltip,
   useMap,
   useMapEvents,
@@ -37,7 +36,6 @@ import { CrosshairOverlay } from "@/features/flight-planner/components/Crosshair
 import { FreehandDrawOverlay } from "@/features/flight-planner/components/FreehandDrawOverlay";
 import { PolygonEditHandles } from "@/features/flight-planner/components/PolygonEditHandles";
 import { createMapboxElevationService } from "@/features/flight-planner/services/elevationService";
-import { usePointerPressHighlightOverButton } from "@/features/flight-planner/hooks/usePointerPressHighlightOverButton";
 import { useFlightStore } from "@/features/flight-planner/stores/useFlightStore";
 import type { FlightStats, Waypoint } from "@/features/flight-planner/types";
 import type { PointOfInterest } from "@/features/flight-planner/types/poi";
@@ -55,7 +53,6 @@ import {
 import {
   attachHoldStillLongPressToElement,
   getEventClientPoint,
-  isReleaseOverElement,
   MAP_LONG_PRESS_MARKER_TOUCH_SLOP_PX,
   MAP_LONG_PRESS_MS,
   subscribeHoldStillLongPress,
@@ -70,33 +67,13 @@ import {
 } from "@/features/flight-planner/utils/flightDroneProfile";
 import { computeFrustumGeometry } from "@/features/flight-planner/utils/frustumCalculator";
 import { toast } from "sonner";
+import {
+  RadialContextMenu,
+  type RadialMenuItem,
+} from "@/features/map-engine/components/RadialContextMenu";
 
 function formatWpLine(w: Waypoint) {
   return `${w.lat.toFixed(6)}, ${w.lng.toFixed(6)} | ${w.altitude}m`;
-}
-
-type WaypointRemovalSnapshot = {
-  waypoints: Waypoint[];
-  strips: Strip[];
-  stats: FlightStats | null;
-  selectedWaypointId: string | null;
-};
-
-function cloneWaypointRemovalSnapshot(state: {
-  waypoints: Waypoint[];
-  strips: Strip[];
-  stats: FlightStats | null;
-  selectedWaypointId: string | null;
-}): WaypointRemovalSnapshot {
-  return {
-    waypoints: state.waypoints.map((w) => ({ ...w })),
-    strips: state.strips.map((s) => ({
-      ...s,
-      coordinates: s.coordinates.map((c) => [...c] as [number, number]),
-    })),
-    stats: state.stats ? { ...state.stats } : null,
-    selectedWaypointId: state.selectedWaypointId,
-  };
 }
 
 /** Mesmo `t` que `buildCalibrationWaypointFootprintRings` usa para a cor da área da foto. */
@@ -183,7 +160,7 @@ const WP_MISSION_ICON = {
   midMuted: mkMissionWpIcon(10, "#94a3b8", "#cbd5e1", 1),
 } as const;
 
-/** Uma animação de entrada por waypoint; reset ao desmontar (incl. “desfazer”). */
+/** Uma animação de entrada por waypoint; reset ao desmontar (incl. "desfazer"). */
 const waypointsEnterAnimationPlayed = new Set<string>();
 
 function MissionWaypointMarkerWithHoldDelete({
@@ -204,28 +181,21 @@ function MissionWaypointMarkerWithHoldDelete({
   onDragEndForId: (id: string) => (e: L.LeafletEvent) => void;
 }) {
   const markerRef = useRef<L.Marker | null>(null);
-  const holdCtlRef = useRef<ReturnType<
-    typeof attachHoldStillLongPressToElement
-  > | null>(null);
+  const holdCtlRef = useRef<ReturnType<typeof attachHoldStillLongPressToElement> | null>(null);
   const shouldIgnoreLongPressRef = useRef(false);
   const openedViaHoldRef = useRef(false);
-  const deleteBtnRef = useRef<HTMLButtonElement | null>(null);
-  const [showDeleteMenu, setShowDeleteMenu] = useState(false);
+  const pressCoordRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [showMenu, setShowMenu] = useState(false);
+
   const setSelectedWaypoint = useFlightStore((s) => s.setSelectedWaypoint);
   const removeWaypoint = useFlightStore((s) => s.removeWaypoint);
+  const setRouteStartRef = useFlightStore((s) => s.setRouteStartRef);
   const waypointCount = useFlightStore((s) => s.waypoints.length);
 
-  const deletePressed = usePointerPressHighlightOverButton(
-    showDeleteMenu && waypointCount > 1,
-    deleteBtnRef,
-  );
-
+  // Animação de entrada
   useLayoutEffect(() => {
     if (waypointsEnterAnimationPlayed.has(waypoint.id)) return;
-    if (
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    ) {
+    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       waypointsEnterAnimationPlayed.add(waypoint.id);
       return;
     }
@@ -235,47 +205,39 @@ function MissionWaypointMarkerWithHoldDelete({
     if (!inner) return;
     waypointsEnterAnimationPlayed.add(waypoint.id);
     inner.classList.add("dd-wp-entra");
-    const onEnd = () => {
-      inner.classList.remove("dd-wp-entra");
-    };
+    const onEnd = () => inner.classList.remove("dd-wp-entra");
     inner.addEventListener("animationend", onEnd, { once: true });
-    return () => {
-      waypointsEnterAnimationPlayed.delete(waypoint.id);
-    };
+    return () => { waypointsEnterAnimationPlayed.delete(waypoint.id); };
   }, [waypoint.id, waypoint.lat, waypoint.lng]);
 
   const performDelete = useCallback(() => {
-    const st = useFlightStore.getState();
-    if (st.waypoints.length <= 1) {
-      setShowDeleteMenu(false);
-      return;
-    }
-    const snapshot = cloneWaypointRemovalSnapshot(st);
-
-    if (st.selectedWaypointId === waypoint.id) {
+    if (waypointCount <= 1) { setShowMenu(false); return; }
+    if (useFlightStore.getState().selectedWaypointId === waypoint.id) {
       setSelectedWaypoint(null);
     }
     removeWaypoint(waypoint.id);
-    setShowDeleteMenu(false);
+    setShowMenu(false);
     haptic.medium();
-
     toast("Waypoint removido", {
       action: {
         label: "Desfazer",
         onClick: () => {
-          const s = useFlightStore.getState();
-          s.setResult(snapshot.waypoints, snapshot.stats, snapshot.strips);
-          s.setSelectedWaypoint(snapshot.selectedWaypointId);
+          useFlightStore.getState().undo();
           haptic.light();
         },
       },
       duration: 10_000,
     });
-  }, [waypoint.id, removeWaypoint, setSelectedWaypoint]);
+  }, [waypoint.id, waypointCount, removeWaypoint, setSelectedWaypoint]);
 
-  const cancelHold = useCallback(() => {
-    holdCtlRef.current?.cancelActiveHold();
-  }, []);
+  const performSetRouteStart = useCallback(() => {
+    setRouteStartRef({ lat: waypoint.lat, lng: waypoint.lng });
+    setShowMenu(false);
+    haptic.light();
+    toast("Ponto de início da rota definido", { duration: 2500 });
+  }, [waypoint.lat, waypoint.lng, setRouteStartRef]);
+
+  const cancelHold = useCallback(() => { holdCtlRef.current?.cancelActiveHold(); }, []);
 
   const applyDragStartAnim = useCallback(() => {
     if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
@@ -293,17 +255,15 @@ function MissionWaypointMarkerWithHoldDelete({
     if (!inner) return;
     inner.classList.remove("dd-wp-dragging");
     inner.classList.add("dd-wp-drag-settle");
-    inner.addEventListener("animationend", () => {
-      inner.classList.remove("dd-wp-drag-settle");
-    }, { once: true });
+    inner.addEventListener("animationend", () => inner.classList.remove("dd-wp-drag-settle"), { once: true });
   }, []);
 
   useLayoutEffect(() => {
-    shouldIgnoreLongPressRef.current = showDeleteMenu;
-  }, [showDeleteMenu]);
+    shouldIgnoreLongPressRef.current = showMenu;
+  }, [showMenu]);
 
   useEffect(() => {
-    if (!holdDeleteEnabled || showDeleteMenu) return undefined;
+    if (!holdDeleteEnabled || showMenu) return undefined;
 
     let cancelled = false;
     let raf = 0;
@@ -315,18 +275,17 @@ function MissionWaypointMarkerWithHoldDelete({
       const el = markerRef.current?.getElement();
       if (!el) {
         attempts += 1;
-        if (attempts < 20) {
-          raf = requestAnimationFrame(tryAttach);
-        }
+        if (attempts < 20) raf = requestAnimationFrame(tryAttach);
         return;
       }
       ctl = attachHoldStillLongPressToElement(el, {
         shouldIgnore: () => shouldIgnoreLongPressRef.current,
         slopPx: MAP_LONG_PRESS_MARKER_TOUCH_SLOP_PX,
+        onStart: (coords) => { pressCoordRef.current = coords; },
         onFire: () => {
           openedViaHoldRef.current = true;
           haptic.heavy();
-          setShowDeleteMenu(true);
+          setShowMenu(true);
         },
       });
       holdCtlRef.current = ctl;
@@ -340,117 +299,83 @@ function MissionWaypointMarkerWithHoldDelete({
       ctl?.detach();
       holdCtlRef.current = null;
     };
-  }, [holdDeleteEnabled, waypoint.lat, waypoint.lng, showDeleteMenu]);
+  }, [holdDeleteEnabled, waypoint.lat, waypoint.lng, showMenu]);
 
-  useEffect(() => {
-    const m = markerRef.current;
-    if (!m) return undefined;
-    if (!showDeleteMenu) {
-      m.closePopup();
-      openedViaHoldRef.current = false;
-      return undefined;
+  const menuItems = useMemo<RadialMenuItem[]>(() => {
+    const items: RadialMenuItem[] = [
+      {
+        id: "route-start",
+        icon: Navigation,
+        label: "Início da rota",
+        colorClass: "text-[#3ecf8e]",
+      },
+    ];
+    if (waypointCount > 1) {
+      items.push({
+        id: "delete",
+        icon: Trash2,
+        label: "Deletar waypoint",
+        colorClass: "text-red-400",
+      });
     }
-    const t = window.setTimeout(() => {
-      m.openPopup();
-    }, 0);
-    return () => clearTimeout(t);
-  }, [showDeleteMenu]);
+    return items;
+  }, [waypointCount]);
 
-  useEffect(() => {
-    if (!showDeleteMenu) return undefined;
-    const onRelease = (e: Event) => {
-      if (!openedViaHoldRef.current) return;
+  const handleMenuSelect = useCallback(
+    (id: string) => {
+      if (id === "delete") performDelete();
+      else if (id === "route-start") performSetRouteStart();
+      setShowMenu(false);
       openedViaHoldRef.current = false;
-      if (useFlightStore.getState().waypoints.length <= 1) return;
-      const btn = deleteBtnRef.current;
-      if (!btn || !isReleaseOverElement(btn, e)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      performDelete();
-    };
-    window.addEventListener("pointerup", onRelease, true);
-    window.addEventListener("touchend", onRelease, true);
-    return () => {
-      window.removeEventListener("pointerup", onRelease, true);
-      window.removeEventListener("touchend", onRelease, true);
-    };
-  }, [showDeleteMenu, performDelete]);
+    },
+    [performDelete, performSetRouteStart],
+  );
+
+  const handleMenuDismiss = useCallback(() => {
+    setShowMenu(false);
+    openedViaHoldRef.current = false;
+  }, []);
 
   return (
-    <Marker
-      ref={markerRef}
-      position={[waypoint.lat, waypoint.lng]}
-      icon={icon}
-      draggable={draggable && !showDeleteMenu}
-      zIndexOffset={zIndexOffset}
-      eventHandlers={{
-        click: (e) => {
-          L.DomEvent.stopPropagation(e);
-          setSelectedWaypoint(waypoint.id);
-        },
-        dragstart: () => {
-          cancelHold();
-          applyDragStartAnim();
-        },
-        dragend: (e) => {
-          applyDragEndAnim();
-          onDragEndForId(waypoint.id)(e);
-        },
-        popupclose: () => setShowDeleteMenu(false),
-      }}
-    >
-      {!showDeleteMenu ? <Tooltip direction="top" offset={[0, -8]}>{tooltip}</Tooltip> : null}
-      {showDeleteMenu ? (
-        <Popup
-          offset={[0, -10]}
-          className="dd-map-action-popup"
-          closeButton
-          autoPan
-          keepInView
-        >
-          <div className="flex min-w-[12.5rem] max-w-[min(92vw,16rem)] flex-col">
-            <div className="border-b border-white/[0.08] px-3 py-2.5 pr-9">
-              <p className="text-sm font-semibold tracking-tight text-neutral-100">Waypoint</p>
-              <p className="mt-1 font-mono text-[11px] leading-snug text-neutral-500">
-                {formatWpLine(waypoint)}
-              </p>
-            </div>
-            <div className="flex flex-col gap-0.5 p-2">
-              {waypointCount > 1 ? (
-                <button
-                  ref={deleteBtnRef}
-                  type="button"
-                  className={cn(
-                    "touch-target flex min-h-11 w-full items-center gap-2 rounded-lg border border-transparent px-3 text-left text-sm font-medium text-red-400 transition-colors duration-150",
-                    "hover:border-red-500/25 hover:bg-red-500/10 active:bg-red-500/15",
-                    deletePressed &&
-                      "border-red-500/35 bg-red-500/16 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
-                  )}
-                  onClick={performDelete}
-                >
-                  <Trash2 className="size-4 shrink-0 opacity-90" aria-hidden />
-                  Deletar waypoint
-                </button>
-              ) : (
-                <p className="px-1 py-1.5 text-xs leading-snug text-neutral-400">
-                  A rota precisa de pelo menos um waypoint.
-                </p>
-              )}
-              <button
-                type="button"
-                className={cn(
-                  "touch-target flex min-h-11 w-full items-center justify-center rounded-lg px-3 text-sm text-neutral-200 transition-colors",
-                  "hover:bg-white/[0.06] active:bg-white/[0.08]",
-                )}
-                onClick={() => setShowDeleteMenu(false)}
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        </Popup>
+    <>
+      <Marker
+        ref={markerRef}
+        position={[waypoint.lat, waypoint.lng]}
+        icon={icon}
+        draggable={draggable && !showMenu}
+        zIndexOffset={zIndexOffset}
+        eventHandlers={{
+          click: (e) => {
+            L.DomEvent.stopPropagation(e);
+            setSelectedWaypoint(waypoint.id);
+          },
+          dragstart: () => {
+            cancelHold();
+            applyDragStartAnim();
+          },
+          dragend: (e) => {
+            applyDragEndAnim();
+            onDragEndForId(waypoint.id)(e);
+          },
+        }}
+      >
+        {!showMenu ? (
+          <Tooltip direction="top" offset={[0, -8]}>
+            {tooltip}
+          </Tooltip>
+        ) : null}
+      </Marker>
+
+      {showMenu ? (
+        <RadialContextMenu
+          position={pressCoordRef.current}
+          items={menuItems}
+          onSelect={handleMenuSelect}
+          onDismiss={handleMenuDismiss}
+          openedViaHold={openedViaHoldRef.current}
+        />
       ) : null}
-    </Marker>
+    </>
   );
 }
 
@@ -476,7 +401,7 @@ function PlanMissionWaypointMarkers({
       if (!w0) return;
 
       const patch: Partial<Waypoint> = { lat, lng };
-      state.updateWaypoint(id, patch);
+      state.updateWaypoint(id, patch, true);
 
       if (!state.terrainFollowing) return;
 
@@ -877,6 +802,8 @@ export function FlightPlannerMapContent() {
       <MapClearWaypointSelection />
       <MapPlannerCursor />
       <MapGestureLock />
+      <MapUndoRedoGesture />
+      <MapUndoKeyboard />
       <MapLongPressWaypoint />
       <FreehandDrawOverlay visible={isDrawMode} />
       <CrosshairOverlay
@@ -1189,18 +1116,26 @@ function MapPlannerCursor() {
   return null;
 }
 
-/** Módulo 6: Long press no mapa em modo navigate adiciona waypoint manual. */
+/** Módulo 6: Long press no mapa em modo navigate abre menu radial contextual. */
 function MapLongPressWaypoint() {
   const mode = useFlightStore((s) => s.plannerInteractionMode);
   const waypoints = useFlightStore((s) => s.waypoints);
   const addManualWaypoint = useFlightStore((s) => s.addManualWaypoint);
+  const setRouteStartRef = useFlightStore((s) => s.setRouteStartRef);
+  const setPoi = useFlightStore((s) => s.setPoi);
   const map = useMap();
   const mapHoldCancelRef = useRef<(() => void) | null>(null);
+
+  type MenuState = {
+    position: { x: number; y: number };
+    latlng: { lat: number; lng: number };
+    openedViaHold: boolean;
+  };
+  const [menuState, setMenuState] = useState<MenuState | null>(null);
 
   useEffect(
     () => () => {
       mapHoldCancelRef.current?.();
-      mapHoldCancelRef.current = null;
     },
     [],
   );
@@ -1211,43 +1146,176 @@ function MapLongPressWaypoint() {
       if (useFlightStore.getState().poiPlacementActive) return;
       mapHoldCancelRef.current?.();
       mapHoldCancelRef.current = null;
+
       const pt = getEventClientPoint(e.originalEvent);
-      const latlng = e.latlng;
-      const runAdd = () => {
-        const alt =
-          waypoints.length > 0
-            ? waypoints.reduce((sum, w) => sum + w.altitude, 0) / waypoints.length
-            : useFlightStore.getState().params.altitudeM;
+      const latlng = { lat: e.latlng.lat, lng: e.latlng.lng };
+
+      const openMenu = (coords: { x: number; y: number }) => {
+        mapHoldCancelRef.current = null;
         haptic.heavy();
-        addManualWaypoint([latlng.lat, latlng.lng], alt);
+        setMenuState({ position: coords, latlng, openedViaHold: true });
       };
+
       if (!pt) {
         let cancel: () => void;
-        const finishListeners = () => {
-          map.off("mouseup", cancel);
-          map.off("mousemove", cancel);
-        };
+        const finish = () => { map.off("mouseup", cancel); map.off("mousemove", cancel); };
         const timer = window.setTimeout(() => {
-          finishListeners();
-          mapHoldCancelRef.current = null;
-          runAdd();
+          finish();
+          const r = map.getContainer().getBoundingClientRect();
+          openMenu({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
         }, MAP_LONG_PRESS_MS);
-        cancel = () => {
-          window.clearTimeout(timer);
-          finishListeners();
-          mapHoldCancelRef.current = null;
-        };
+        cancel = () => { window.clearTimeout(timer); finish(); mapHoldCancelRef.current = null; };
         mapHoldCancelRef.current = cancel;
         map.on("mouseup", cancel);
         map.on("mousemove", cancel);
         return;
       }
-      mapHoldCancelRef.current = subscribeHoldStillLongPress(pt, () => {
-        mapHoldCancelRef.current = null;
-        runAdd();
-      });
+      mapHoldCancelRef.current = subscribeHoldStillLongPress(pt, () =>
+        openMenu({ x: pt.clientX, y: pt.clientY }),
+      );
     },
   });
+
+  if (!menuState) return null;
+
+  const menuItems: RadialMenuItem[] = [
+    {
+      id: "add-waypoint",
+      icon: MapPin,
+      label: "Adicionar waypoint",
+      colorClass: "text-[#3ecf8e]",
+    },
+  ];
+  if (waypoints.length > 0) {
+    menuItems.push(
+      {
+        id: "set-poi",
+        icon: Crosshair,
+        label: "Definir POI",
+        colorClass: "text-cyan-400",
+      },
+      {
+        id: "set-route-start",
+        icon: Navigation,
+        label: "Início da rota",
+        colorClass: "text-blue-400",
+      },
+    );
+  }
+
+  const handleSelect = (id: string) => {
+    const { latlng } = menuState;
+    const st = useFlightStore.getState();
+    if (id === "add-waypoint") {
+      const alt =
+        waypoints.length > 0
+          ? waypoints.reduce((sum, w) => sum + w.altitude, 0) / waypoints.length
+          : st.params.altitudeM;
+      haptic.medium();
+      addManualWaypoint([latlng.lat, latlng.lng], alt);
+    } else if (id === "set-poi") {
+      haptic.light();
+      setPoi(newPointOfInterest(latlng.lat, latlng.lng, st.waypoints, st.params.altitudeM));
+      toast("POI definido", { duration: 2000 });
+    } else if (id === "set-route-start") {
+      setRouteStartRef(latlng);
+      haptic.light();
+      toast("Ponto de início da rota definido", { duration: 2500 });
+    }
+    setMenuState(null);
+  };
+
+  return (
+    <RadialContextMenu
+      position={menuState.position}
+      items={menuItems}
+      onSelect={handleSelect}
+      onDismiss={() => setMenuState(null)}
+      openedViaHold={menuState.openedViaHold}
+    />
+  );
+}
+
+/** Undo/redo por gesto de dois dedos (swipe esquerda/direita) no mapa. */
+function MapUndoRedoGesture() {
+  const map = useMap();
+
+  useEffect(() => {
+    const container = map.getContainer();
+    let startX: number | null = null;
+    let startY: number | null = null;
+    let startTime = 0;
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length < 2) return;
+      startX = (e.touches[0]!.clientX + e.touches[1]!.clientX) / 2;
+      startY = (e.touches[0]!.clientY + e.touches[1]!.clientY) / 2;
+      startTime = Date.now();
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (startX === null || startY === null) return;
+      if (Date.now() - startTime > 600) { startX = null; return; }
+
+      const t0 = e.changedTouches[0];
+      if (!t0) { startX = null; return; }
+      const endX = t0.clientX;
+      const endY = t0.clientY;
+      const dx = endX - startX;
+      const dy = Math.abs(endY - startY);
+      startX = null;
+      startY = null;
+
+      if (Math.abs(dx) < 45 || dy > 35) return;
+
+      const st = useFlightStore.getState();
+      if (dx < 0) {
+        const entry = st.undo();
+        if (entry) {
+          haptic.light();
+          toast(`↩ ${entry.label} desfeito`, { duration: 1500 });
+        }
+      } else {
+        const entry = st.redo();
+        if (entry) {
+          haptic.light();
+          toast(`↪ ${entry.label} refeito`, { duration: 1500 });
+        }
+      }
+    };
+
+    container.addEventListener("touchstart", onTouchStart, { passive: true });
+    container.addEventListener("touchend", onTouchEnd);
+    return () => {
+      container.removeEventListener("touchstart", onTouchStart);
+      container.removeEventListener("touchend", onTouchEnd);
+    };
+  }, [map]);
+
+  return null;
+}
+
+/** Atalhos de teclado Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y para undo/redo (desktop). */
+function MapUndoKeyboard() {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      const tag = (document.activeElement as HTMLElement | null)?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select") return;
+
+      if (e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        const entry = useFlightStore.getState().undo();
+        if (entry) toast(`↩ ${entry.label} desfeito`, { duration: 1500 });
+      } else if (e.key === "y" || (e.key === "z" && e.shiftKey)) {
+        e.preventDefault();
+        const entry = useFlightStore.getState().redo();
+        if (entry) toast(`↪ ${entry.label} refeito`, { duration: 1500 });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   return null;
 }
 

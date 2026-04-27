@@ -103,11 +103,9 @@ export function generateFlightGrid(
   return strips
 }
 
+/** Ids estáveis por índice: evitam re-animação da rota a cada `setResult` do bridge com a mesma geometria. */
 function newWaypointId(index: number): string {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-    return crypto.randomUUID()
-  }
-  return `wp-${index}-${Math.random().toString(36).slice(2, 9)}`
+  return `wp-${index}`
 }
 
 export function generateWaypoints(strips: Strip[], altitudeM: number): Waypoint[] {

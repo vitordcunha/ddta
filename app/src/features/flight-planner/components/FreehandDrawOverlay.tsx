@@ -8,6 +8,7 @@ import { useMapEngine } from '@/features/map-engine/useMapEngine'
 import { maybeBackdropBlur, useDeviceTier } from '@/lib/deviceUtils'
 import { cn } from '@/lib/utils'
 import { haptic } from '@/utils/haptics'
+import { StylusPressureIndicator } from './StylusPressureIndicator'
 
 const FREEHAND_CHROME = '[data-freehand-chrome]'
 
@@ -30,9 +31,14 @@ export interface FreehandDrawOverlayProps {
 }
 
 /**
- * Módulo 4: SVG overlay para desenho freehand com caneta (stylus).
- * Em modo desenho, detecta caneta (hover ou toque) e engaja freehand; traço
- * capturado só para pointerType pen sem bloquear toque no mapa.
+ * SVG overlay para desenho freehand com caneta (stylus).
+ *
+ * Phase 3 — Stylus & Pen:
+ * - 3-A: StylusPressureIndicator integrado — círculos concêntricos seguem a
+ *         caneta com feedback visual de pressão em tempo real.
+ * - 3-B: Preview simplificado ao vivo (verde brand #3ecf8e, 200ms de lag) durante
+ *         o traço; ao aceitar, animação `dd-polygon-fill-in` (300ms) antes de
+ *         converter em polígono editável.
  */
 export function FreehandDrawOverlay({ visible }: FreehandDrawOverlayProps) {
   const map = useMap()
@@ -46,12 +52,17 @@ export function FreehandDrawOverlay({ visible }: FreehandDrawOverlayProps) {
   const penSessionEngagedRef = useRef(false)
   const [rawPoints, setRawPoints] = useState<[number, number][]>([])
   const [simplifiedPoints, setSimplifiedPoints] = useState<[number, number][] | null>(null)
+  // Preview simplificado ao vivo com 200ms de lag (Phase 3-B)
+  const [liveSimplifiedPoints, setLiveSimplifiedPoints] = useState<[number, number][] | null>(null)
+  // Animação de aceitação antes de commitar no store (Phase 3-B)
+  const [isAccepting, setIsAccepting] = useState(false)
   const [epsilonIndex, setEpsilonIndex] = useState(DEFAULT_EPSILON_INDEX)
   const [isDrawing, setIsDrawing] = useState(false)
 
   const rawRef = useRef<[number, number][]>([])
   const isDrawingRef = useRef(false)
   const simplifiedRef = useRef<[number, number][] | null>(null)
+  const acceptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const engagePenSession = useCallback(() => {
     if (penSessionEngagedRef.current) return
@@ -67,13 +78,33 @@ export function FreehandDrawOverlay({ visible }: FreehandDrawOverlayProps) {
     isDrawingRef.current = isDrawing
   }, [isDrawing])
 
+  // ── Phase 3-B: preview simplificado ao vivo (atualiza a cada 200ms) ──
+  useEffect(() => {
+    if (!isDrawing) {
+      setLiveSimplifiedPoints(null)
+      return
+    }
+    const interval = setInterval(() => {
+      const pts = rawRef.current
+      if (pts.length < 5) return
+      setLiveSimplifiedPoints(simplifyPath(pts, EPSILON_LEVELS[DEFAULT_EPSILON_INDEX]!))
+    }, 200)
+    return () => clearInterval(interval)
+  }, [isDrawing])
+
   /** Sair do modo desenho: encerra sessão freehand e limpa traço. */
   useEffect(() => {
     if (visible) return
+    if (acceptTimerRef.current) {
+      clearTimeout(acceptTimerRef.current)
+      acceptTimerRef.current = null
+    }
     penSessionEngagedRef.current = false
     setPenSessionEngaged(false)
     setRawPoints([])
     setSimplifiedPoints(null)
+    setLiveSimplifiedPoints(null)
+    setIsAccepting(false)
     setIsDrawing(false)
     isDrawingRef.current = false
     rawRef.current = []
@@ -92,6 +123,7 @@ export function FreehandDrawOverlay({ visible }: FreehandDrawOverlayProps) {
   const finishStrokeFromRef = useCallback(() => {
     setIsDrawing(false)
     isDrawingRef.current = false
+    setLiveSimplifiedPoints(null)
     enableMapPan()
     const pts = rawRef.current
     if (pts.length < 3) {
@@ -105,8 +137,8 @@ export function FreehandDrawOverlay({ visible }: FreehandDrawOverlayProps) {
   }, [enableMapPan])
 
   /**
-   * Modo desenho: hover/touch da caneta engaja sessão; captura em fase capture
-   * só para caneta, para o dedo continuar no Leaflet.
+   * Captura eventos de caneta em fase capture; toque no dedo passa direto
+   * ao Leaflet sem interferência.
    */
   useEffect(() => {
     if (!visible) return
@@ -147,6 +179,8 @@ export function FreehandDrawOverlay({ visible }: FreehandDrawOverlayProps) {
       rawRef.current = [pixelToLatLng(e.clientX, e.clientY)]
       setRawPoints([...rawRef.current])
       setSimplifiedPoints(null)
+      setLiveSimplifiedPoints(null)
+      setIsAccepting(false)
       setIsDrawing(true)
       isDrawingRef.current = true
     }
@@ -198,25 +232,39 @@ export function FreehandDrawOverlay({ visible }: FreehandDrawOverlayProps) {
     [epsilonIndex],
   )
 
+  // ── Phase 3-B: aceitar com animação de fill-in (300ms) antes de commitar ──
   const handleAccept = useCallback(() => {
     const pts = simplifiedPoints
-    if (!pts || pts.length < 3) return
-    const ring = [...pts, pts[0]!]
-    const feature = polyFeature([ring.map(([lat, lng]) => [lng, lat])])
-    setPolygon(feature)
-    setDraftPoints([])
-    setPlannerInteractionMode('navigate')
+    if (!pts || pts.length < 3 || isAccepting) return
+
     haptic.success()
-    setSimplifiedPoints(null)
-    setRawPoints([])
-    rawRef.current = []
-    penSessionEngagedRef.current = false
-    setPenSessionEngaged(false)
-  }, [simplifiedPoints, setPolygon, setDraftPoints, setPlannerInteractionMode])
+    setIsAccepting(true)
+
+    acceptTimerRef.current = setTimeout(() => {
+      acceptTimerRef.current = null
+      const ring = [...pts, pts[0]!]
+      const feature = polyFeature([ring.map(([lat, lng]) => [lng, lat])])
+      setPolygon(feature)
+      setDraftPoints([])
+      setPlannerInteractionMode('navigate')
+      setSimplifiedPoints(null)
+      setRawPoints([])
+      rawRef.current = []
+      penSessionEngagedRef.current = false
+      setPenSessionEngaged(false)
+      setIsAccepting(false)
+    }, 320)
+  }, [simplifiedPoints, isAccepting, setPolygon, setDraftPoints, setPlannerInteractionMode])
 
   const handleRedraw = useCallback(() => {
+    if (acceptTimerRef.current) {
+      clearTimeout(acceptTimerRef.current)
+      acceptTimerRef.current = null
+    }
     setSimplifiedPoints(null)
     setRawPoints([])
+    setLiveSimplifiedPoints(null)
+    setIsAccepting(false)
     rawRef.current = []
     haptic.light()
   }, [])
@@ -228,105 +276,194 @@ export function FreehandDrawOverlay({ visible }: FreehandDrawOverlayProps) {
   const container = map.getContainer()
   const rect = container.getBoundingClientRect()
 
+  // Converte LatLng → string "x,y" para atributo points do SVG
   const toSvg = (pt: [number, number]) => {
     const p = map.latLngToContainerPoint([pt[0], pt[1]])
     return `${p.x},${p.y}`
   }
 
-  const rawPolyline =
+  // Converte LatLng → {x, y} para elementos SVG individuais
+  const toSvgXY = (pt: [number, number]) => {
+    return map.latLngToContainerPoint([pt[0], pt[1]])
+  }
+
+  const rawPolylineStr =
     rawPoints.length > 1 ? rawPoints.map(toSvg).join(' ') : null
-  const simplifiedPolyline =
+
+  const liveSimplifiedStr =
+    liveSimplifiedPoints && liveSimplifiedPoints.length > 1
+      ? liveSimplifiedPoints.map(toSvg).join(' ')
+      : null
+
+  const simplifiedPolygonStr =
     simplifiedPoints && simplifiedPoints.length > 1
       ? simplifiedPoints.map(toSvg).join(' ')
       : null
 
-  return createPortal(
-    <div
-      className="pointer-events-none absolute inset-0 z-[450]"
-      style={{ width: rect.width, height: rect.height, left: 0, top: 0 }}
-    >
-      <svg
-        className="absolute inset-0 h-full w-full"
-        style={{ pointerEvents: 'none' }}
-        aria-hidden
-      >
-        {rawPolyline && !simplifiedPoints && (
-          <polyline
-            points={rawPolyline}
-            fill="none"
-            stroke="rgba(200,200,220,0.55)"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        )}
-        {simplifiedPolyline && (
-          <polyline
-            points={simplifiedPolyline}
-            fill="rgba(96,165,250,0.15)"
-            stroke="#60A5FA"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeDasharray="6 3"
-          />
-        )}
-      </svg>
+  // Ponta do traço atual — indicador de posição ativa
+  const tipPoint =
+    isDrawing && rawPoints.length > 0 ? toSvgXY(rawPoints[rawPoints.length - 1]!) : null
 
-      {simplifiedPoints ? (
-        <div
-          data-freehand-chrome
-          className="pointer-events-auto absolute bottom-24 left-1/2 -translate-x-1/2"
-          style={{ zIndex: 460 }}
-          onPointerDown={(e) => e.stopPropagation()}
+  return createPortal(
+    <>
+      {/* Phase 3-A: indicador de pressão da caneta */}
+      <StylusPressureIndicator visible={visible} />
+
+      <div
+        className="pointer-events-none absolute inset-0 z-[450]"
+        style={{ width: rect.width, height: rect.height, left: 0, top: 0 }}
+      >
+        <svg
+          className="absolute inset-0 h-full w-full"
+          style={{ pointerEvents: 'none' }}
+          aria-hidden
         >
+          {/* Traço bruto — cinza suave enquanto o usuário desenha */}
+          {rawPolylineStr && !simplifiedPoints && (
+            <polyline
+              points={rawPolylineStr}
+              fill="none"
+              stroke="rgba(200,200,220,0.45)"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          )}
+
+          {/* Phase 3-B: preview simplificado ao vivo (verde brand, 200ms de lag) */}
+          {isDrawing && liveSimplifiedStr && (
+            <polyline
+              key={liveSimplifiedStr.length}
+              points={liveSimplifiedStr}
+              fill="none"
+              stroke="#3ecf8e"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="dd-freehand-live-path"
+              style={{ filter: 'drop-shadow(0 0 4px rgba(62,207,142,0.5))' }}
+            />
+          )}
+
+          {/* Indicador de ponta do traço ativo */}
+          {tipPoint && (
+            <g>
+              <circle
+                cx={tipPoint.x}
+                cy={tipPoint.y}
+                r={10}
+                fill="rgba(62,207,142,0.15)"
+                className="dd-freehand-tip-ring"
+              />
+              <circle
+                cx={tipPoint.x}
+                cy={tipPoint.y}
+                r={3.5}
+                fill="rgba(62,207,142,0.75)"
+              />
+            </g>
+          )}
+
+          {/* Phase 3-B: preview de polígono na revisão (e animação ao aceitar) */}
+          {simplifiedPolygonStr && (
+            <polygon
+              points={simplifiedPolygonStr}
+              fill="rgba(62,207,142,0.1)"
+              stroke="#3ecf8e"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={isAccepting ? 'dd-polygon-accepting' : undefined}
+              style={{ filter: 'drop-shadow(0 0 4px rgba(62,207,142,0.3))' }}
+            />
+          )}
+        </svg>
+
+        {/* Chrome de revisão: ajuste de vértices + aceitar / redesenhar */}
+        {simplifiedPoints && (
           <div
-            className={cn(
-              'flex flex-col items-center gap-2 rounded-2xl border border-white/10 bg-[rgba(26,26,26,0.97)] p-3 shadow-xl',
-              maybeBackdropBlur(deviceTier, 'md'),
-            )}
+            data-freehand-chrome
+            className="pointer-events-auto absolute bottom-24 left-1/2 -translate-x-1/2"
+            style={{ zIndex: 460 }}
+            onPointerDown={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-2 text-xs text-[#b4b4b4]">
-              <button
-                type="button"
-                onClick={() => handleEpsilonChange(1)}
-                className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm transition hover:bg-white/10"
-                title="Menos vértices"
-              >
-                − Menos
-              </button>
-              <span className="min-w-[5rem] text-center font-medium text-[#fafafa]">
-                {simplifiedPoints.length} vértices
-              </span>
-              <button
-                type="button"
-                onClick={() => handleEpsilonChange(-1)}
-                className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm transition hover:bg-white/10"
-                title="Mais vértices"
-              >
-                + Mais
-              </button>
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={handleRedraw}
-                className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-[#fafafa] transition hover:bg-white/10"
-              >
-                ↺ Redesenhar
-              </button>
-              <button
-                type="button"
-                onClick={handleAccept}
-                className="rounded-xl border border-[#3ecf8e]/40 bg-[#3ecf8e]/10 px-4 py-2 text-sm font-medium text-[#3ecf8e] transition hover:bg-[#3ecf8e]/20"
-              >
-                ✓ Aceitar
-              </button>
+            <div
+              className={cn(
+                'flex flex-col items-center gap-2.5 rounded-2xl border border-white/10 bg-[rgba(20,20,22,0.97)] p-3 shadow-2xl',
+                maybeBackdropBlur(deviceTier, 'md'),
+              )}
+            >
+              {/* Ajuste de densidade de vértices */}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleEpsilonChange(1)}
+                  disabled={isAccepting}
+                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm
+                             transition hover:bg-white/10 disabled:pointer-events-none disabled:opacity-40"
+                  title="Menos vértices"
+                >
+                  − Menos
+                </button>
+
+                <span className="min-w-[5.5rem] text-center">
+                  <span className="block text-sm font-semibold tabular-nums text-[#fafafa]">
+                    {simplifiedPoints.length}
+                  </span>
+                  <span className="block text-[10px] leading-tight text-[#777]">vértices</span>
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => handleEpsilonChange(-1)}
+                  disabled={isAccepting}
+                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm
+                             transition hover:bg-white/10 disabled:pointer-events-none disabled:opacity-40"
+                  title="Mais vértices"
+                >
+                  + Mais
+                </button>
+              </div>
+
+              {/* Ações principais */}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleRedraw}
+                  disabled={isAccepting}
+                  className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm
+                             text-[#fafafa] transition hover:bg-white/10
+                             disabled:pointer-events-none disabled:opacity-40"
+                >
+                  ↺ Redesenhar
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleAccept}
+                  disabled={isAccepting}
+                  className={cn(
+                    'relative overflow-hidden rounded-xl border px-4 py-2 text-sm font-medium transition',
+                    isAccepting
+                      ? 'border-[#3ecf8e]/60 bg-[#3ecf8e]/20 text-[#3ecf8e]'
+                      : 'border-[#3ecf8e]/40 bg-[#3ecf8e]/10 text-[#3ecf8e] hover:bg-[#3ecf8e]/20',
+                  )}
+                >
+                  {isAccepting ? (
+                    <span className="flex items-center gap-1.5">
+                      <span className="dd-accept-spinner inline-block h-3.5 w-3.5 rounded-full border-2 border-current border-t-transparent" />
+                      Aplicando…
+                    </span>
+                  ) : (
+                    '✓ Aceitar'
+                  )}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      ) : null}
-    </div>,
+        )}
+      </div>
+    </>,
     container,
   )
 }

@@ -16,6 +16,59 @@ import { migrateWaypoints } from '@/features/flight-planner/types/waypoint'
 import { applyPoiAttitudeToWaypoints } from '@/features/flight-planner/utils/poiCalculator'
 import { closeDraftToPolygon } from '@/features/flight-planner/utils/polygonDraft'
 
+function statsEqual(a: FlightStats | null, b: FlightStats | null): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  return (
+    a.gsdCm === b.gsdCm &&
+    a.areaHa === b.areaHa &&
+    a.waypointCount === b.waypointCount &&
+    a.stripCount === b.stripCount &&
+    a.estimatedPhotos === b.estimatedPhotos &&
+    a.estimatedTimeMin === b.estimatedTimeMin &&
+    a.batteryCount === b.batteryCount &&
+    a.distanceKm === b.distanceKm
+  )
+}
+
+function stripsCoordsEqual(a: Strip[], b: Strip[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    if (a[i]!.id !== b[i]!.id) return false
+    const ac = a[i]!.coordinates
+    const bc = b[i]!.coordinates
+    if (ac.length !== bc.length) return false
+    for (let j = 0; j < ac.length; j++) {
+      if (ac[j]![0] !== bc[j]![0] || ac[j]![1] !== bc[j]![1]) return false
+    }
+  }
+  return true
+}
+
+function waypointsMissionEqual(a: Waypoint[], b: Waypoint[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    const wa = a[i]!
+    const wb = b[i]!
+    if (
+      wa.id !== wb.id ||
+      wa.index !== wb.index ||
+      wa.lat !== wb.lat ||
+      wa.lng !== wb.lng ||
+      wa.altitude !== wb.altitude ||
+      wa.altitudeMode !== wb.altitudeMode ||
+      wa.heading !== wb.heading ||
+      wa.gimbalPitch !== wb.gimbalPitch ||
+      (wa.terrainElevation ?? null) !== (wb.terrainElevation ?? null) ||
+      Boolean(wa.poiOverride) !== Boolean(wb.poiOverride) ||
+      Boolean(wa.isManual) !== Boolean(wb.isManual)
+    ) {
+      return false
+    }
+  }
+  return true
+}
+
 export type PersistedFlightPlan = {
   polygon: Feature<Polygon> | null
   params: FlightParams
@@ -48,6 +101,53 @@ export const defaultDeckMapVisibility = (): {
   results: { showRoute: false, showWaypoints: true },
 })
 
+/** Entrada do histórico de ações para undo/redo. */
+export type HistoryEntry = {
+  label: string
+  timestamp: number
+  polygon: Feature<Polygon> | null
+  waypoints: Waypoint[]
+  params: FlightParams
+  strips: Strip[]
+  stats: FlightStats | null
+  poi: PointOfInterest | null
+}
+
+function cloneHistoryEntry(state: {
+  polygon: Feature<Polygon> | null
+  waypoints: Waypoint[]
+  params: FlightParams
+  strips: Strip[]
+  stats: FlightStats | null
+  poi: PointOfInterest | null
+}, label: string): HistoryEntry {
+  return {
+    label,
+    timestamp: Date.now(),
+    polygon: state.polygon
+      ? {
+          ...state.polygon,
+          geometry: {
+            ...state.polygon.geometry,
+            coordinates: [state.polygon.geometry.coordinates[0].map((c) => [...c] as [number, number])],
+          },
+        }
+      : null,
+    waypoints: state.waypoints.map((w) => ({ ...w })),
+    params: { ...state.params },
+    strips: state.strips.map((s) => ({
+      ...s,
+      coordinates: s.coordinates.map((c) => [...c] as [number, number]),
+    })),
+    stats: state.stats ? { ...state.stats } : null,
+    poi: state.poi ? { ...state.poi } : null,
+  }
+}
+
+const UNDO_STACK_MAX = 50
+/** Janela de deduplicação para mudanças de parâmetros (ms). */
+const PARAMS_DEDUP_MS = 600
+
 type FlightStore = PersistedFlightPlan & {
   strips: Strip[]
   terrainFollowing: boolean
@@ -74,7 +174,7 @@ type FlightStore = PersistedFlightPlan & {
    */
   frustum3dInDeck: boolean
   setFrustum3dInDeck: (v: boolean) => void
-  updateWaypoint: (id: string, patch: Partial<Waypoint>) => void
+  updateWaypoint: (id: string, patch: Partial<Waypoint>, pushHistory?: boolean) => void
   /** Copia gimbal e heading do waypoint de origem para todos sem `poiOverride`. */
   copyAttitudeFromWaypointToAll: (sourceId: string) => void
   setTerrainFollowing: (enabled: boolean) => void
@@ -122,6 +222,16 @@ type FlightStore = PersistedFlightPlan & {
   setManualWaypointsBannerVisible: (visible: boolean) => void
   /** Recalcula o plano descartando edições manuais (limpa isManual de todos os waypoints). */
   clearManualWaypoints: () => void
+
+  // ── Undo / Redo ────────────────────────────────────────────────
+  _undoStack: HistoryEntry[]
+  _redoStack: HistoryEntry[]
+  /** Captura o estado atual no undoStack antes de uma mutação. Limpa o redoStack. */
+  _pushHistory: (label: string) => void
+  /** Desfaz a última ação. Retorna a entrada que foi desfeita (ou null se stack vazio). */
+  undo: () => HistoryEntry | null
+  /** Refaz a última ação desfeita. Retorna a entrada refeita (ou null se stack vazio). */
+  redo: () => HistoryEntry | null
 }
 
 export const initialFlightParams: FlightParams = {
@@ -135,7 +245,7 @@ export const initialFlightParams: FlightParams = {
   speedMs: 8,
 }
 
-export const useFlightStore = create<FlightStore>((set) => ({
+export const useFlightStore = create<FlightStore>((set, get) => ({
   polygon: null,
   params: initialFlightParams,
   waypoints: [],
@@ -179,6 +289,78 @@ export const useFlightStore = create<FlightStore>((set) => ({
   plannerBaseLayer: 'dark',
   hasManualWaypoints: false,
   manualWaypointsBannerVisible: false,
+
+  // ── Undo / Redo ────────────────────────────────────────────────
+  _undoStack: [],
+  _redoStack: [],
+
+  _pushHistory: (label) => {
+    const state = get()
+    const entry = cloneHistoryEntry(state, label)
+    set((s) => {
+      const stack = s._undoStack
+      // Deduplicação para mudanças de parâmetros: substitui a última entrada se for do mesmo
+      // tipo e dentro da janela de debounce, para evitar undo granular de cada tick de slider.
+      const last = stack[stack.length - 1]
+      if (
+        last &&
+        last.label === label &&
+        label === 'Parâmetros atualizados' &&
+        Date.now() - last.timestamp < PARAMS_DEDUP_MS
+      ) {
+        return {
+          _undoStack: [...stack.slice(0, -1), entry],
+          _redoStack: [],
+        }
+      }
+      return {
+        _undoStack: [...stack.slice(-UNDO_STACK_MAX + 1), entry],
+        _redoStack: [],
+      }
+    })
+  },
+
+  undo: () => {
+    const state = get()
+    if (state._undoStack.length === 0) return null
+    const entry = state._undoStack[state._undoStack.length - 1]!
+    // Salva estado atual no redo
+    const current = cloneHistoryEntry(state, entry.label)
+    set((s) => ({
+      _undoStack: s._undoStack.slice(0, -1),
+      _redoStack: [...s._redoStack, current],
+      polygon: entry.polygon,
+      waypoints: entry.waypoints,
+      params: entry.params,
+      strips: entry.strips,
+      stats: entry.stats,
+      poi: entry.poi,
+      hasManualWaypoints: entry.waypoints.some((w) => w.isManual),
+    }))
+    return entry
+  },
+
+  redo: () => {
+    const state = get()
+    if (state._redoStack.length === 0) return null
+    const entry = state._redoStack[state._redoStack.length - 1]!
+    // Salva estado atual no undo
+    const current = cloneHistoryEntry(state, entry.label)
+    set((s) => ({
+      _redoStack: s._redoStack.slice(0, -1),
+      _undoStack: [...s._undoStack, current],
+      polygon: entry.polygon,
+      waypoints: entry.waypoints,
+      params: entry.params,
+      strips: entry.strips,
+      stats: entry.stats,
+      poi: entry.poi,
+      hasManualWaypoints: entry.waypoints.some((w) => w.isManual),
+    }))
+    return entry
+  },
+
+  // ── Actions ───────────────────────────────────────────────────
   setRouteStartRef: (routeStartRef) => set({ routeStartRef }),
   setDraftPoints: (draftPoints) => set({ draftPoints }),
   addDraftPoint: (point) =>
@@ -187,18 +369,28 @@ export const useFlightStore = create<FlightStore>((set) => ({
     set((state) => ({
       draftPoints: state.draftPoints.slice(0, -1),
     })),
-  closeDraft: () =>
-    set((state) => {
-      const closed = closeDraftToPolygon(state.draftPoints)
-      if (!closed) return state
-      return { polygon: closed, draftPoints: [] }
-    }),
+  closeDraft: () => {
+    const state = get()
+    const closed = closeDraftToPolygon(state.draftPoints)
+    if (!closed) return
+    state._pushHistory('Polígono desenhado')
+    set({ polygon: closed, draftPoints: [] })
+  },
   setPlannerInteractionMode: (plannerInteractionMode) =>
     set({ plannerInteractionMode }),
   setPlannerBaseLayer: (plannerBaseLayer) => set({ plannerBaseLayer }),
-  setPolygon: (polygon) => set({ polygon }),
-  setParams: (params) => set((state) => ({ params: { ...state.params, ...params } })),
-  updateWaypoint: (id, patch) =>
+  setPolygon: (polygon) => {
+    get()._pushHistory('Polígono atualizado')
+    set({ polygon })
+  },
+  setParams: (params) => {
+    get()._pushHistory('Parâmetros atualizados')
+    set((state) => ({ params: { ...state.params, ...params } }))
+  },
+  updateWaypoint: (id, patch, pushHistory = false) => {
+    if (pushHistory) {
+      get()._pushHistory('Waypoint atualizado')
+    }
     set((state) => {
       let waypoints = state.waypoints.map((w) => {
         if (w.id !== id) return w
@@ -221,7 +413,8 @@ export const useFlightStore = create<FlightStore>((set) => ({
         waypoints = applyPoiAttitudeToWaypoints(waypoints, poi)
       }
       return { waypoints }
-    }),
+    })
+  },
   copyAttitudeFromWaypointToAll: (sourceId) =>
     set((state) => {
       const src = state.waypoints.find((w) => w.id === sourceId)
@@ -248,10 +441,27 @@ export const useFlightStore = create<FlightStore>((set) => ({
     }),
   setPoiPlacementActive: (poiPlacementActive) => set({ poiPlacementActive }),
   setResult: (waypoints, stats, strips) =>
-    set({ waypoints, stats, strips, hasManualWaypoints: waypoints.some((w) => w.isManual) }),
+    set((state) => {
+      const nextManual = waypoints.some((w) => w.isManual)
+      if (
+        waypointsMissionEqual(state.waypoints, waypoints) &&
+        stripsCoordsEqual(state.strips, strips) &&
+        statsEqual(state.stats, stats) &&
+        state.hasManualWaypoints === nextManual
+      ) {
+        return state
+      }
+      return {
+        waypoints,
+        stats,
+        strips,
+        hasManualWaypoints: nextManual,
+      }
+    }),
   setWeather: (weather, assessment) => set({ weather, assessment }),
   setIsCalculating: (value) => set({ isCalculating: value }),
-  movePolygonVertex: (index, latLng) =>
+  movePolygonVertex: (index, latLng) => {
+    get()._pushHistory('Vértice movido')
     set((state) => {
       if (!state.polygon) return state
       const coords = [...state.polygon.geometry.coordinates[0]]
@@ -268,8 +478,10 @@ export const useFlightStore = create<FlightStore>((set) => ({
           geometry: { ...state.polygon.geometry, coordinates: [coords] },
         },
       }
-    }),
-  deletePolygonVertex: (index) =>
+    })
+  },
+  deletePolygonVertex: (index) => {
+    get()._pushHistory('Vértice removido')
     set((state) => {
       if (!state.polygon) return state
       const ring = state.polygon.geometry.coordinates[0]
@@ -284,8 +496,10 @@ export const useFlightStore = create<FlightStore>((set) => ({
           geometry: { ...state.polygon.geometry, coordinates: [closed] },
         },
       }
-    }),
-  insertPolygonVertex: (afterIndex, latLng) =>
+    })
+  },
+  insertPolygonVertex: (afterIndex, latLng) => {
+    get()._pushHistory('Vértice inserido')
     set((state) => {
       if (!state.polygon) return state
       const ring = state.polygon.geometry.coordinates[0]
@@ -303,8 +517,10 @@ export const useFlightStore = create<FlightStore>((set) => ({
           geometry: { ...state.polygon.geometry, coordinates: [closed] },
         },
       }
-    }),
-  addManualWaypoint: (latLng, altitude) =>
+    })
+  },
+  addManualWaypoint: (latLng, altitude) => {
+    get()._pushHistory('Waypoint adicionado')
     set((state) => {
       const id = crypto.randomUUID()
       const index = state.waypoints.length
@@ -322,12 +538,15 @@ export const useFlightStore = create<FlightStore>((set) => ({
       }
       const waypoints = [...state.waypoints, newWp]
       return { waypoints, hasManualWaypoints: true, manualWaypointsBannerVisible: true }
-    }),
-  removeWaypoint: (id) =>
+    })
+  },
+  removeWaypoint: (id) => {
+    get()._pushHistory('Waypoint removido')
     set((state) => {
       const waypoints = state.waypoints.filter((w) => w.id !== id)
       return { waypoints, hasManualWaypoints: waypoints.some((w) => w.isManual) }
-    }),
+    })
+  },
   setManualWaypointsBannerVisible: (manualWaypointsBannerVisible) =>
     set({ manualWaypointsBannerVisible }),
   clearManualWaypoints: () =>
@@ -362,6 +581,8 @@ export const useFlightStore = create<FlightStore>((set) => ({
       frustum3dInDeck: true,
       hasManualWaypoints: false,
       manualWaypointsBannerVisible: false,
+      _undoStack: [],
+      _redoStack: [],
     }),
   resetPlan: () =>
     set({
@@ -386,5 +607,7 @@ export const useFlightStore = create<FlightStore>((set) => ({
       plannerInteractionMode: 'draw',
       hasManualWaypoints: false,
       manualWaypointsBannerVisible: false,
+      _undoStack: [],
+      _redoStack: [],
     }),
 }))
