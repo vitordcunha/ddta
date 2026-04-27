@@ -1,5 +1,4 @@
 import { Battery, Camera, Clock, Focus, Maximize2, Ruler } from "lucide-react";
-import { motion } from "framer-motion";
 import type { FlightStats } from "@/features/flight-planner/types";
 import { useAnimatedNumber } from "@/hooks/useAnimatedNumber";
 

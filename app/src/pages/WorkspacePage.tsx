@@ -3,6 +3,7 @@ import React, {
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useTransition,
@@ -371,43 +372,65 @@ export function WorkspacePage() {
     ? "calc(max(4.5rem, calc(3.5rem + var(--safe-area-top))) + 1.875rem)"
     : "max(4.5rem, calc(3.5rem + var(--safe-area-top)))";
 
-  const plannerShellForPlan: FlightPlannerShellProps | undefined =
-    panel === "plan" && projectId && project
-      ? {
-          expandedOpen: expandedPlannerOpen,
-          onExpandedOpenChange: setExpandedPlannerOpen,
-          expandedTab: expandedPlannerTab,
-          onExpandedTabChange: setExpandedPlannerTab,
-        }
-      : undefined;
-
-  const planFloatingHeaderRight =
-    panel === "plan" && projectId && project && polygon ? (
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="size-9 shrink-0 p-0 text-neutral-400 hover:bg-white/10 hover:text-neutral-100"
-        aria-label="Abrir planejador completo"
-        title="Abrir planejador completo"
-        onClick={() => {
-          setExpandedPlannerTab("mission");
-          setExpandedPlannerOpen(true);
-        }}
-      >
-        <Maximize2 className="size-4" aria-hidden />
-      </Button>
-    ) : undefined;
-
-  const mainPanel = renderWorkspacePanel(panel, {
+  const plannerShellForPlan = useMemo((): FlightPlannerShellProps | undefined => {
+    if (panel !== "plan" || !projectId || !project) return undefined;
+    return {
+      expandedOpen: expandedPlannerOpen,
+      onExpandedOpenChange: setExpandedPlannerOpen,
+      expandedTab: expandedPlannerTab,
+      onExpandedTabChange: setExpandedPlannerTab,
+    };
+  }, [
+    panel,
     projectId,
     project,
-    initialPlan,
-    saveFlightPlan,
-    planFloatingHeaderRight,
-    plannerShell: plannerShellForPlan,
-    deviceTier,
-  });
+    expandedPlannerOpen,
+    expandedPlannerTab,
+  ]);
+
+  const planFloatingHeaderRight = useMemo(
+    () =>
+      panel === "plan" && projectId && project && polygon ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="size-9 shrink-0 p-0 text-neutral-400 hover:bg-white/10 hover:text-neutral-100"
+          aria-label="Abrir planejador completo"
+          title="Abrir planejador completo"
+          onClick={() => {
+            setExpandedPlannerTab("mission");
+            setExpandedPlannerOpen(true);
+          }}
+        >
+          <Maximize2 className="size-4" aria-hidden />
+        </Button>
+      ) : undefined,
+    [panel, projectId, project, polygon],
+  );
+
+  const mainPanel = useMemo(
+    () =>
+      renderWorkspacePanel(panel, {
+        projectId,
+        project,
+        initialPlan,
+        saveFlightPlan,
+        planFloatingHeaderRight,
+        plannerShell: plannerShellForPlan,
+        deviceTier,
+      }),
+    [
+      panel,
+      projectId,
+      project,
+      initialPlan,
+      saveFlightPlan,
+      planFloatingHeaderRight,
+      plannerShellForPlan,
+      deviceTier,
+    ],
+  );
 
   return (
     <div

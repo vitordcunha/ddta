@@ -84,6 +84,7 @@ import {
   windDegToCompass,
   wmoCodeToConditionPt,
 } from "@/features/flight-planner/utils/weatherHelpers";
+import { useShallow } from "zustand/react/shallow";
 import { useFlightStore } from "@/features/flight-planner/stores/useFlightStore";
 import type { PersistedFlightPlan } from "@/features/flight-planner/stores/useFlightStore";
 import {
@@ -257,7 +258,34 @@ export function FlightPlannerConfigPanel({
     setTerrainFollowing,
     setPoi,
     setPoiPlacementActive,
-  } = useFlightStore();
+  } = useFlightStore(
+    useShallow((s) => ({
+      polygon: s.polygon,
+      params: s.params,
+      waypoints: s.waypoints,
+      stats: s.stats,
+      weather: s.weather,
+      assessment: s.assessment,
+      isCalculating: s.isCalculating,
+      poi: s.poi,
+      terrainFollowing: s.terrainFollowing,
+      isTerrainLoading: s.isTerrainLoading,
+      setParams: s.setParams,
+      setWeather: s.setWeather,
+      loadPlan: s.loadPlan,
+      resetPlan: s.resetPlan,
+      routeStartRef: s.routeStartRef,
+      plannerBaseLayer: s.plannerBaseLayer,
+      calibrationSessionId: s.calibrationSessionId,
+      setCalibrationSessionId: s.setCalibrationSessionId,
+      calibrationMapPreviewActive: s.calibrationMapPreviewActive,
+      setCalibrationMapPreviewActive: s.setCalibrationMapPreviewActive,
+      setPlannerInteractionMode: s.setPlannerInteractionMode,
+      setTerrainFollowing: s.setTerrainFollowing,
+      setPoi: s.setPoi,
+      setPoiPlacementActive: s.setPoiPlacementActive,
+    })),
+  );
   const { mapboxToken } = useMapEngine();
   const hasMapboxKey = mapboxToken.trim().length > 0;
   const {

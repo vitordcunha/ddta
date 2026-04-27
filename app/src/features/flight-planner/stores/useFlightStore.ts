@@ -8,6 +8,7 @@ import type {
   PlannerGeoPolygon,
   Strip,
   WeatherData,
+  WeatherForecastHour,
 } from '@/features/flight-planner/types'
 import type { PointOfInterest } from '@/features/flight-planner/types/poi'
 import { migratePoi } from '@/features/flight-planner/types/poi'
@@ -67,6 +68,70 @@ function waypointsMissionEqual(a: Waypoint[], b: Waypoint[]): boolean {
     }
   }
   return true
+}
+
+function strArrayEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false
+  }
+  return true
+}
+
+function forecastHourEqual(a: WeatherForecastHour, b: WeatherForecastHour): boolean {
+  return (
+    a.time === b.time &&
+    a.tempC === b.tempC &&
+    a.precipProbPct === b.precipProbPct &&
+    a.precipMm === b.precipMm &&
+    a.weatherCode === b.weatherCode
+  )
+}
+
+function weatherDataEqual(a: WeatherData | null, b: WeatherData | null): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  if (
+    a.windSpeedMs !== b.windSpeedMs ||
+    a.windDirectionDeg !== b.windDirectionDeg ||
+    a.temperatureC !== b.temperatureC ||
+    a.cloudCoveragePct !== b.cloudCoveragePct ||
+    a.rainMmH !== b.rainMmH ||
+    a.weatherCode !== b.weatherCode ||
+    a.conditionLabel !== b.conditionLabel ||
+    a.isPrecipitatingNow !== b.isPrecipitatingNow ||
+    a.relativeHumidityPct !== b.relativeHumidityPct ||
+    a.apparentTemperatureC !== b.apparentTemperatureC ||
+    a.pressureHpa !== b.pressureHpa ||
+    a.windGustsMs !== b.windGustsMs ||
+    a.isDay !== b.isDay ||
+    a.rainMmHRaw !== b.rainMmHRaw ||
+    a.showersMmH !== b.showersMmH
+  ) {
+    return false
+  }
+  const ah = a.hourlyForecast
+  const bh = b.hourlyForecast
+  if (ah == null && bh == null) return true
+  if (!ah || !bh || ah.length !== bh.length) return false
+  for (let i = 0; i < ah.length; i++) {
+    if (!forecastHourEqual(ah[i]!, bh[i]!)) return false
+  }
+  return true
+}
+
+function flightAssessmentEqual(
+  a: FlightAssessment | null,
+  b: FlightAssessment | null,
+): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  return (
+    a.go === b.go &&
+    strArrayEqual(a.issues, b.issues) &&
+    strArrayEqual(a.warnings, b.warnings) &&
+    strArrayEqual(a.tips, b.tips)
+  )
 }
 
 export type PersistedFlightPlan = {
@@ -458,8 +523,18 @@ export const useFlightStore = create<FlightStore>((set, get) => ({
         hasManualWaypoints: nextManual,
       }
     }),
-  setWeather: (weather, assessment) => set({ weather, assessment }),
-  setIsCalculating: (value) => set({ isCalculating: value }),
+  setWeather: (weather, assessment) =>
+    set((state) => {
+      if (
+        weatherDataEqual(state.weather, weather) &&
+        flightAssessmentEqual(state.assessment, assessment)
+      ) {
+        return state
+      }
+      return { weather, assessment }
+    }),
+  setIsCalculating: (value) =>
+    set((state) => (state.isCalculating === value ? state : { isCalculating: value })),
   movePolygonVertex: (index, latLng) => {
     get()._pushHistory('Vértice movido')
     set((state) => {

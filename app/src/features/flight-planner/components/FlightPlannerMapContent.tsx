@@ -7,8 +7,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { Strip } from "@/features/flight-planner/types";
-import { createPortal } from "react-dom";
 import turfBbox from "@turf/bbox";
 import centerOfMass from "@turf/center-of-mass";
 import { featureCollection, lineString, polygon } from "@turf/helpers";
@@ -16,7 +14,6 @@ import type * as GeoJSON from "geojson";
 import { Crosshair, MapPin, Navigation, Trash2 } from "lucide-react";
 import L, { type DivIcon } from "leaflet";
 import {
-  CircleMarker,
   Marker,
   Polygon,
   Polyline,
@@ -27,17 +24,19 @@ import {
 import {
   MappingPolygonAnimated,
   RoutePolylineAnimated,
-  StripPolylineAnimated,
-  SweepScanLineAnimated,
 } from "@/features/flight-planner/components/PlanLeafletPathAnimations";
 import { useMapEngine } from "@/features/map-engine/useMapEngine";
-import { DrawingToolbar } from "@/features/flight-planner/components/DrawingToolbar";
+import {
+  FlightPlannerMapDraftLayer,
+  FlightPlannerMapMissionPolygon,
+  FlightPlannerMapMissionStrips,
+} from "@/features/flight-planner/components/FlightPlannerMapLayers";
 import { CrosshairOverlay } from "@/features/flight-planner/components/CrosshairOverlay";
 import { FreehandDrawOverlay } from "@/features/flight-planner/components/FreehandDrawOverlay";
 import { PolygonEditHandles } from "@/features/flight-planner/components/PolygonEditHandles";
 import { createMapboxElevationService } from "@/features/flight-planner/services/elevationService";
 import { useFlightStore } from "@/features/flight-planner/stores/useFlightStore";
-import type { FlightStats, Waypoint } from "@/features/flight-planner/types";
+import type { Waypoint } from "@/features/flight-planner/types";
 import type { PointOfInterest } from "@/features/flight-planner/types/poi";
 import { newPointOfInterest } from "@/features/flight-planner/types/poi";
 import { applyTerrainToWaypoints } from "@/features/flight-planner/utils/terrainFollowingApply";
@@ -57,7 +56,6 @@ import {
   MAP_LONG_PRESS_MS,
   subscribeHoldStillLongPress,
 } from "@/features/flight-planner/utils/mapLongPress";
-import { cn } from "@/lib/utils";
 import { readUserPreferencesFromStorage } from "@/constants/userPreferences";
 import { haptic } from "@/utils/haptics";
 import { useDroneModelsQuery } from "@/features/flight-planner/hooks/useDroneModelsQuery";
@@ -619,18 +617,12 @@ export function FlightPlannerMapContent() {
   const poi = useFlightStore((s) => s.poi);
   const selectedWaypointId = useFlightStore((s) => s.selectedWaypointId);
   const waypoints = useFlightStore((s) => s.waypoints);
-  const strips = useFlightStore((s) => s.strips);
-  const draftPoints = useFlightStore((s) => s.draftPoints);
   const params = useFlightStore((s) => s.params);
   const routeStartRef = useFlightStore((s) => s.routeStartRef);
   const calibrationMapPreviewActive = useFlightStore(
     (s) => s.calibrationMapPreviewActive,
   );
   const plannerInteractionMode = useFlightStore((s) => s.plannerInteractionMode);
-  const popLastDraftPoint = useFlightStore((s) => s.popLastDraftPoint);
-  const closeDraft = useFlightStore((s) => s.closeDraft);
-  const setDraftPoints = useFlightStore((s) => s.setDraftPoints);
-  const setPlannerInteractionMode = useFlightStore((s) => s.setPlannerInteractionMode);
   const movePolygonVertex = useFlightStore((s) => s.movePolygonVertex);
   const deletePolygonVertex = useFlightStore((s) => s.deletePolygonVertex);
   const insertPolygonVertex = useFlightStore((s) => s.insertPolygonVertex);
@@ -642,45 +634,9 @@ export function FlightPlannerMapContent() {
     setPolygonPulseVersion((v) => v + 1);
   }, [movePolygonVertex]);
 
-  // ── Exit animation para strips que saem do mapa ────────────────
-  const [exitStrips, setExitStrips] = useState<Strip[]>([]);
-  const exitStripsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const prevStripsRef = useRef<Strip[]>(strips);
-
-  useEffect(() => {
-    if (prevStripsRef.current === strips) return;
-    const prev = prevStripsRef.current;
-    prevStripsRef.current = strips;
-    if (prev.length === 0) return;
-    if (exitStripsTimerRef.current) clearTimeout(exitStripsTimerRef.current);
-    setExitStrips(prev);
-    exitStripsTimerRef.current = setTimeout(() => {
-      setExitStrips([]);
-      exitStripsTimerRef.current = null;
-    }, 280);
-  }, [strips]);
-
-  // ── Versão dos strips para sweep scan line ─────────────────────
-  const stripsAnimVersion = useMemo(() => {
-    if (strips.length === 0) return "";
-    return `${strips.length}:${strips[0]!.id}`;
-  }, [strips]);
-
   const isDrawMode = plannerInteractionMode === "draw";
   const crosshairEnabled = readUserPreferencesFromStorage().crosshairDrawMode;
   const map = useMap();
-
-  const handleDrawingCancel = useCallback(() => {
-    setDraftPoints([]);
-    setPlannerInteractionMode("navigate");
-    haptic.medium();
-  }, [setDraftPoints, setPlannerInteractionMode]);
-
-  const handleDrawingComplete = useCallback(() => {
-    closeDraft();
-    setPlannerInteractionMode("navigate");
-    haptic.success();
-  }, [closeDraft, setPlannerInteractionMode]);
 
   const handleCrosshairAddVertex = useCallback(() => {
     const c = map.getCenter();
@@ -749,35 +705,28 @@ export function FlightPlannerMapContent() {
     return byId;
   }, [calibrationMission]);
 
-  const polygonCoords = useMemo(
-    () =>
-      polygon?.geometry.coordinates[0].map(
+  const calibrationStripLinePaths = useMemo(() => {
+    if (!calibrationMission) return [] as { id: string; positions: [number, number][] }[];
+    return calibrationMission.strips.map((strip) => ({
+      id: strip.id,
+      positions: strip.coordinates.map(
         ([lon, lat]) => [lat, lon] as [number, number],
-      ) ?? [],
-    [polygon],
-  );
+      ),
+    }));
+  }, [calibrationMission]);
 
   const waypointIdSig = useMemo(
     () => waypoints.map((w) => w.id).join("\u001f"),
     [waypoints],
   );
 
+  const routeLinePositions = useMemo(
+    () => waypoints.map((w) => [w.lat, w.lng] as [number, number]),
+    [waypoints],
+  );
+
   /** Missão completa recuada visualmente enquanto a pré-visualização de calibração está ativa. */
   const muteFullMission = calibrationMapPreviewActive;
-
-  /** Caminho de varredura: centros dos strips em ordem, para a sweep scan line. */
-  const sweepPath = useMemo((): [number, number][] => {
-    if (strips.length < 2) return [];
-    return strips
-      .map((s) => {
-        const coords = s.coordinates;
-        if (coords.length < 2) return null;
-        const mid = Math.floor(coords.length / 2);
-        const [lon, lat] = coords[mid]!;
-        return [lat, lon] as [number, number];
-      })
-      .filter((p): p is [number, number] => p !== null);
-  }, [strips]);
 
   const waypointFovFootprintLatLng = useMemo((): [number, number][] | null => {
     if (!selectedWaypointId) return null;
@@ -817,113 +766,17 @@ export function FlightPlannerMapContent() {
         onVertexDelete={(i) => { haptic.medium(); deletePolygonVertex(i); }}
         onMidpointInsert={(after, ll) => { haptic.light(); insertPolygonVertex(after, ll); }}
       />
-      {createPortal(
-        <DrawingToolbar
-          visible={isDrawMode}
-          canUndo={draftPoints.length > 0}
-          canComplete={draftPoints.length >= 3}
-          onUndo={() => { haptic.light(); popLastDraftPoint(); }}
-          onCancel={handleDrawingCancel}
-          onComplete={handleDrawingComplete}
-        />,
-        document.body,
-      )}
-      {draftPoints.map((pt, i) => {
-        const isFirst = i === 0;
-        const canCloseHere = isFirst && draftPoints.length > 2;
-        return (
-          <CircleMarker
-            key={`draft-${i}-${pt[0]}-${pt[1]}`}
-            center={pt}
-            radius={canCloseHere ? 8 : 4}
-            pathOptions={{
-              className: "dd-map-draft-vert",
-              color: canCloseHere ? "#3ecf8e" : "#60A5FA",
-              weight: canCloseHere ? 2.5 : 1.5,
-              fillColor: canCloseHere
-                ? "rgba(62, 207, 142, 0.35)"
-                : "rgba(96, 165, 250, 0.45)",
-              fillOpacity: 0.9,
-            }}
-          >
-            {canCloseHere ? (
-              <Tooltip direction="top" offset={[0, -6]}>
-                Fechar poligono
-              </Tooltip>
-            ) : null}
-          </CircleMarker>
-        );
-      })}
-
-      {draftPoints.length > 1 && (
-        <Polyline
-          positions={draftPoints}
-          pathOptions={{
-            className: "dd-map-draft-line",
-            color: "#60A5FA",
-            dashArray: "4 4",
-            weight: 2,
-          }}
-        />
-      )}
-
-      {polygonCoords.length > 0 && (
-        <MappingPolygonAnimated
-          enableEnter
-          pulseVersion={polygonPulseVersion}
-          positions={polygonCoords}
-          pathOptions={
-            muteFullMission
-              ? {
-                  color: "#64748b",
-                  fillColor: "#475569",
-                  fillOpacity: 0.1,
-                  weight: 2,
-                }
-              : {
-                  color: "#3ecf8e",
-                  fillOpacity: 0.18,
-                  weight: 2,
-                }
-          }
-        />
-      )}
-      {exitStrips.map((strip, stripIdx) => (
-        <StripPolylineAnimated
-          key={`exit-${strip.id}`}
-          staggerIndex={stripIdx}
-          totalStrips={exitStrips.length}
-          isExiting
-          positions={strip.coordinates.map(([lon, lat]) => [lat, lon])}
-          pathOptions={{ color: "#00c573", weight: 2, opacity: 0.75 }}
-        />
-      ))}
-      {strips.map((strip, stripIdx) => (
-        <StripPolylineAnimated
-          key={strip.id}
-          staggerIndex={stripIdx}
-          totalStrips={strips.length}
-          positions={strip.coordinates.map(([lon, lat]) => [lat, lon])}
-          pathOptions={
-            muteFullMission
-              ? {
-                  color: "#94a3b8",
-                  weight: 1.5,
-                  opacity: 0.38,
-                  dashArray: "5 7",
-                }
-              : { color: "#00c573", weight: 2, opacity: 0.75 }
-          }
-        />
-      ))}
-      {!muteFullMission && sweepPath.length >= 2 ? (
-        <SweepScanLineAnimated key={stripsAnimVersion} positions={sweepPath} />
-      ) : null}
+      <FlightPlannerMapDraftLayer />
+      <FlightPlannerMapMissionPolygon
+        pulseVersion={polygonPulseVersion}
+        muteFullMission={muteFullMission}
+      />
+      <FlightPlannerMapMissionStrips muteFullMission={muteFullMission} />
       {waypoints.length > 1 ? (
         <RoutePolylineAnimated
           waypointsCount={waypoints.length}
           waypointIdSig={waypointIdSig}
-          positions={waypoints.map((w) => [w.lat, w.lng])}
+          positions={routeLinePositions}
           pathOptions={
             muteFullMission
               ? {
@@ -982,10 +835,10 @@ export function FlightPlannerMapContent() {
               fillOpacity: 0.32,
             }}
           />
-          {calibrationMission.strips.map((strip) => (
+          {calibrationStripLinePaths.map((row) => (
             <Polyline
-              key={`cal-strip-${strip.id}`}
-              positions={strip.coordinates.map(([lon, lat]) => [lat, lon])}
+              key={`cal-strip-${row.id}`}
+              positions={row.positions}
               pathOptions={{
                 color: "#06b6d4",
                 weight: 3,
