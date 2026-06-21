@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import L from "leaflet";
+import { PlannerMapBaseLayer } from "@/components/map/PlannerMapBaseLayer";
 import {
   CircleMarker,
   GeoJSON,
@@ -10,7 +11,6 @@ import {
   useMap,
   useMapEvents,
 } from "react-leaflet";
-import { sampleContours } from "@/features/results/mocks/completedProject";
 import type { MapBounds } from "@/features/results/stores/useResultsViewStore";
 import { useMapEngine } from "@/features/map-engine/useMapEngine";
 import { getSparseCloudMaxPoints } from "@/features/map-engine/utils/getSparseCloudMaxPoints";
@@ -85,7 +85,7 @@ export function ResultsMapInnerLayers({
       projectsService.getSparseCloudGeoJson(projectId!, {
         maxPoints: sparseMax,
       }),
-    enabled: Boolean(projectId) && sparseUnlocked,
+    enabled: Boolean(projectId && sparseUnlocked),
     staleTime: 60_000,
   });
   const orthoKeys = useMemo(() => {
@@ -119,14 +119,28 @@ export function ResultsMapInnerLayers({
   const distancePoints = useResultsViewStore((s) => s.distancePoints);
   const areaPoints = useResultsViewStore((s) => s.areaPoints);
   const elevationPoint = useResultsViewStore((s) => s.elevationPoint);
+  const boundaryPoints = useResultsViewStore((s) => s.boundaryPoints);
   const addDistancePoint = useResultsViewStore((s) => s.addDistancePoint);
   const addAreaPoint = useResultsViewStore((s) => s.addAreaPoint);
   const setElevationPoint = useResultsViewStore((s) => s.setElevationPoint);
+  const addBoundaryPoint = useResultsViewStore((s) => s.addBoundaryPoint);
   const showRealFlightPath = useResultsViewStore((s) => s.showRealFlightPath);
   const { data: flightPathGeo } = useQuery({
     queryKey: ["project-flight-path", projectId],
     queryFn: () => projectsService.getFlightPathGeoJson(projectId!),
     enabled: Boolean(projectId && showRealFlightPath),
+    retry: false,
+  });
+
+  const hasDsm = Boolean(project?.assets?.["odm_dem/dsm.tif"]);
+  const hasDtm = Boolean(project?.assets?.["odm_dem/dtm.tif"]);
+  const hasContours = Boolean(project?.assets?.["contours"]);
+
+  const { data: contoursGeoJson } = useQuery({
+    queryKey: ["project-contours", projectId],
+    queryFn: () => projectsService.getContoursGeoJson(projectId!),
+    enabled: Boolean(projectId) && activeLayer === "contours" && hasContours,
+    staleTime: 300_000,
     retry: false,
   });
   const realPathLatLng = useMemo(() => {
@@ -138,12 +152,7 @@ export function ResultsMapInnerLayers({
 
   return (
     <>
-      <TileLayer
-        url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-        attribution="Tiles &copy; Esri"
-        maxNativeZoom={19}
-        maxZoom={22}
-      />
+      <PlannerMapBaseLayer />
       {activeLayer === "orthophoto" && projectId && orderedOrthoKeys.length > 0
         ? orderedOrthoKeys.map((key) => {
             const { source, runId } = parseOrthoKey(key);
@@ -161,31 +170,40 @@ export function ResultsMapInnerLayers({
             );
           })
         : null}
-      {activeLayer === "dsm" ? (
+      {activeLayer === "dsm" && projectId && hasDsm ? (
         <TileLayer
-          url="https://stamen-tiles.a.ssl.fastly.net/terrain/{z}/{x}/{y}.jpg"
+          key={`dsm-${projectId}`}
+          url={projectsService.getDsmTileUrl(projectId)}
           opacity={globalLayerOpacity / 100}
-          attribution="Map tiles by Stamen Design"
+          maxNativeZoom={22}
+          maxZoom={24}
+          tileSize={256}
+          attribution="DroneData DSM"
         />
       ) : null}
-      {activeLayer === "dtm" ? (
+      {activeLayer === "dtm" && projectId && hasDtm ? (
         <TileLayer
-          url="https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png"
+          key={`dtm-${projectId}`}
+          url={projectsService.getDtmTileUrl(projectId)}
           opacity={globalLayerOpacity / 100}
-          attribution="&copy; OpenTopoMap contributors"
+          maxNativeZoom={22}
+          maxZoom={24}
+          tileSize={256}
+          attribution="DroneData DTM"
         />
       ) : null}
-      {activeLayer === "contours" ? (
+      {activeLayer === "contours" && contoursGeoJson ? (
         <GeoJSON
-          data={sampleContours as GeoJSON.GeoJsonObject}
+          key="contours"
+          data={contoursGeoJson}
           style={() => ({
             color: "#7dd3fc",
             weight: 1,
             opacity: globalLayerOpacity / 100,
           })}
           onEachFeature={(feature, layer) => {
-            const e = feature.properties?.elevation;
-            if (e) layer.bindTooltip(`${e} m`);
+            const e = feature.properties?.elev ?? feature.properties?.elevation;
+            if (e != null) layer.bindTooltip(`${Number(e).toFixed(1)} m`);
           }}
         />
       ) : null}
@@ -259,12 +277,38 @@ export function ResultsMapInnerLayers({
         />
       ) : null}
 
+      {boundaryPoints.length > 2 ? (
+        <Polygon
+          positions={boundaryPoints}
+          pathOptions={{
+            color: "#f97316",
+            weight: 2,
+            dashArray: "6 3",
+            fillColor: "#f97316",
+            fillOpacity: 0.12,
+          }}
+        />
+      ) : null}
+      {boundaryPoints.map((point, index) => (
+        <CircleMarker
+          key={`b-${String(index)}`}
+          center={point}
+          radius={4}
+          pathOptions={{
+            color: "#f97316",
+            fillColor: "#f97316",
+            fillOpacity: 1,
+          }}
+        />
+      ))}
+
       <AutoFitBoundsEffect bounds={autoFitBounds} />
       <MapToolEvents
         tool={tool}
         onAddDistance={addDistancePoint}
         onAddArea={addAreaPoint}
         onPickElevation={setElevationPoint}
+        onAddBoundary={addBoundaryPoint}
       />
     </>
   );
@@ -297,11 +341,13 @@ function MapToolEvents({
   onAddDistance,
   onAddArea,
   onPickElevation,
+  onAddBoundary,
 }: {
-  tool: "none" | "distance" | "area" | "elevation";
+  tool: "none" | "distance" | "area" | "elevation" | "boundary";
   onAddDistance: (p: [number, number]) => void;
   onAddArea: (p: [number, number]) => void;
   onPickElevation: (p: [number, number] | null) => void;
+  onAddBoundary: (p: [number, number]) => void;
 }) {
   useMapEvents({
     click(event) {
@@ -309,6 +355,7 @@ function MapToolEvents({
       if (tool === "distance") onAddDistance(point);
       if (tool === "area") onAddArea(point);
       if (tool === "elevation") onPickElevation(point);
+      if (tool === "boundary") onAddBoundary(point);
     },
     contextmenu(event) {
       event.originalEvent.preventDefault();

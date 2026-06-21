@@ -15,6 +15,9 @@ interface StartProcessingPanelProps {
   onFinalizeStuck?: () => void
   enablePreview?: boolean
   onTogglePreview?: (enabled: boolean) => void
+  enableSelective?: boolean
+  onToggleSelective?: (enabled: boolean) => void
+  onStartSelective?: () => void
 }
 
 export function StartProcessingPanel({
@@ -27,6 +30,9 @@ export function StartProcessingPanel({
   onFinalizeStuck,
   enablePreview = false,
   onTogglePreview,
+  enableSelective = false,
+  onToggleSelective,
+  onStartSelective,
 }: StartProcessingPanelProps) {
   const details = processingPresets[selectedPreset]
 
@@ -115,9 +121,45 @@ export function StartProcessingPanel({
         </div>
       )}
 
-      <Button className="w-full" onClick={onStart}>
-        {startLabel}
-      </Button>
+      {onToggleSelective && !isRetry && !isRedo ? (
+        <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-neutral-100">Seleção de área</p>
+              <p className="text-xs text-neutral-400">
+                Gera nuvem esparsa primeiro para você delimitar a área exata de processamento. Reduz tempo e custo.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={enableSelective}
+              onClick={() => onToggleSelective(!enableSelective)}
+              className={[
+                'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200',
+                enableSelective ? 'bg-orange-500' : 'bg-neutral-700',
+              ].join(' ')}
+            >
+              <span
+                className={[
+                  'inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200',
+                  enableSelective ? 'translate-x-4' : 'translate-x-0',
+                ].join(' ')}
+              />
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {enableSelective && onStartSelective ? (
+        <Button className="w-full bg-orange-600 hover:bg-orange-500" onClick={onStartSelective}>
+          Gerar nuvem esparsa e selecionar área
+        </Button>
+      ) : (
+        <Button className="w-full" onClick={onStart}>
+          {startLabel}
+        </Button>
+      )}
 
       {isRetry && !isRedo && onFinalizeStuck ? (
         <Button variant="secondary" className="w-full" onClick={() => void onFinalizeStuck()}>

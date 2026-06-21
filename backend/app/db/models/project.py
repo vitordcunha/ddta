@@ -36,6 +36,10 @@ class Project(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     preview_runs: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     last_processing_preset: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
+    # Selective processing: phase-1 sparse SfM → user picks boundary → phase-2 full ODM
+    selective_processing_preset: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    processing_boundary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
     images = relationship("ProjectImage", back_populates="project", cascade="all, delete-orphan")
     calibration_sessions = relationship(
         "CalibrationSession",

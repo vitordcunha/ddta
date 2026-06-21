@@ -216,7 +216,7 @@ export function WindIndicatorOverlay() {
       mainBtnRef.current,
       chipBtnRef.current,
       handleRef.current,
-    ].filter((n): n is HTMLElement => n != null);
+    ].filter((n): n is HTMLButtonElement | HTMLDivElement => n != null);
     for (const node of nodes) {
       node.addEventListener("selectstart", onSelectStart);
     }

@@ -15,7 +15,7 @@ const steps: ProcessingStep[] = [
   { progress: 100, message: 'Concluido' },
 ]
 
-type RuntimeStatus = 'uploading' | 'processing' | 'completed' | 'failed'
+type RuntimeStatus = 'uploading' | 'processing' | 'sparse_processing' | 'awaiting_boundary' | 'completed' | 'failed'
 
 type StreamStatusPayload = {
   status?: string
@@ -39,6 +39,10 @@ function normalizeRuntimeStatus(raw: string | undefined, fallback: RuntimeStatus
     case 'processing':
     case 'queued':
       return 'processing'
+    case 'sparse_processing':
+      return 'sparse_processing'
+    case 'awaiting_boundary':
+      return 'awaiting_boundary'
     case 'draft':
     case 'created':
     case 'uploading':
@@ -54,8 +58,16 @@ function normalizeRuntimeStatus(raw: string | undefined, fallback: RuntimeStatus
 export function useProjectStatus(projectId: string, initialStatus: RuntimeStatus) {
   const queryClient = useQueryClient()
   const [status, setStatus] = useState<RuntimeStatus>(initialStatus)
-  const [progress, setProgress] = useState(initialStatus === 'completed' ? 100 : 0)
-  const [message, setMessage] = useState(initialStatus === 'completed' ? 'Concluido' : 'Aguardando')
+  const [progress, setProgress] = useState(
+    initialStatus === 'completed' || initialStatus === 'awaiting_boundary' ? 100 : 0,
+  )
+  const [message, setMessage] = useState(
+    initialStatus === 'completed'
+      ? 'Concluido'
+      : initialStatus === 'awaiting_boundary'
+        ? 'Aguardando seleção de área'
+        : 'Aguardando',
+  )
   const [logs, setLogs] = useState<ProcessingLogEntry[]>([])
   const [previewStatus, setPreviewStatus] = useState<string | null>(null)
   const [previewProgress, setPreviewProgress] = useState(0)
@@ -138,7 +150,10 @@ export function useProjectStatus(projectId: string, initialStatus: RuntimeStatus
       const text = payload.message ?? currentStep.message
       setMessage(text)
 
-      const isTerminal = incomingStatus === 'completed' || incomingStatus === 'failed'
+      const isTerminal =
+        incomingStatus === 'completed' ||
+        incomingStatus === 'failed' ||
+        incomingStatus === 'awaiting_boundary'
 
       // Na primeira mensagem da stream, pré-popula o histórico com todas as etapas já concluídas.
       // Isso garante que ao recarregar a página no meio de um processamento o log mostre o histórico completo.
@@ -217,6 +232,63 @@ export function useProjectStatus(projectId: string, initialStatus: RuntimeStatus
     [projectId, queryClient, stopStream, stopTimer],
   )
 
+  const startSelective = useCallback(
+    async (preset: ProcessingPreset = 'standard') => {
+      if (!projectId) return
+      stopTimer()
+      const toRestore = statusRef.current
+      try {
+        await projectsService.startProcessing(projectId, { preset, selective: true })
+        void queryClient.invalidateQueries({ queryKey: ['project', projectId] })
+        void queryClient.invalidateQueries({ queryKey: ['projects'] })
+        setStatus('sparse_processing')
+        setProgress(0)
+        setMessage('Gerando nuvem esparsa...')
+        setLogs([{ timestamp: new Date().toLocaleTimeString('pt-BR'), message: 'Gerando nuvem esparsa...' }])
+        sparseSeenRef.current = false
+      } catch {
+        setStatus(toRestore)
+        setProgress(toRestore === 'completed' ? 100 : 0)
+        setLogs([])
+        toast.error('Não foi possível iniciar o processamento seletivo.')
+      }
+    },
+    [projectId, queryClient, stopTimer],
+  )
+
+  const confirmBoundary = useCallback(
+    async (boundary: GeoJSON.GeoJsonObject) => {
+      if (!projectId) return
+      try {
+        await projectsService.confirmBoundary(projectId, boundary)
+        void queryClient.invalidateQueries({ queryKey: ['project', projectId] })
+        void queryClient.invalidateQueries({ queryKey: ['projects'] })
+        setStatus('processing')
+        setProgress(0)
+        setMessage(steps[0].message)
+        setLogs([{ timestamp: new Date().toLocaleTimeString('pt-BR'), message: steps[0].message }])
+      } catch {
+        toast.error('Não foi possível confirmar a área. Tente novamente.')
+      }
+    },
+    [projectId, queryClient],
+  )
+
+  const skipBoundary = useCallback(async () => {
+    if (!projectId) return
+    try {
+      await projectsService.skipBoundary(projectId)
+      void queryClient.invalidateQueries({ queryKey: ['project', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['projects'] })
+      setStatus('processing')
+      setProgress(0)
+      setMessage(steps[0].message)
+      setLogs([{ timestamp: new Date().toLocaleTimeString('pt-BR'), message: steps[0].message }])
+    } catch {
+      toast.error('Não foi possível iniciar o processamento completo.')
+    }
+  }, [projectId, queryClient])
+
   const cancelProcessing = useCallback(async () => {
     if (!projectId) return
     stopTimer()
@@ -284,7 +356,7 @@ export function useProjectStatus(projectId: string, initialStatus: RuntimeStatus
 
   useEffect(() => {
     if (!projectId) return
-    if (status === 'processing') {
+    if (status === 'processing' || status === 'sparse_processing') {
       openStream()
     }
   }, [openStream, projectId, status])
@@ -308,6 +380,9 @@ export function useProjectStatus(projectId: string, initialStatus: RuntimeStatus
     sparseCloudTrackProgress,
     sparseCloudTrackHint,
     startProcessing,
+    startSelective,
+    confirmBoundary,
+    skipBoundary,
     cancelProcessing,
     finalizeStuckMain,
     finalizeStuckPreview,

@@ -1,4 +1,4 @@
-import { Crosshair, Ruler, Square, Trash2 } from "lucide-react";
+import { Crosshair, PencilLine, Ruler, Square, Trash2 } from "lucide-react";
 import { useResultsViewStore } from "@/features/results/stores/useResultsViewStore";
 import type { DeviceTier } from "@/features/map-engine/utils/detectDeviceTier";
 import { MapLeftRailMapNavBlock } from "./MapLeftRailMapNavBlock";
@@ -8,10 +8,12 @@ import { SidebarGroup } from "./SidebarGroup";
 
 type ResultsMapRailContentProps = {
   deviceTier: DeviceTier;
+  isAwaitingBoundary?: boolean;
 };
 
 export function ResultsMapRailContent({
   deviceTier,
+  isAwaitingBoundary = false,
 }: ResultsMapRailContentProps) {
   const activeLayer = useResultsViewStore((s) => s.activeLayer);
   const tool = useResultsViewStore((s) => s.tool);
@@ -21,6 +23,28 @@ export function ResultsMapRailContent({
 
   return (
     <div className="mt-auto flex shrink-0 flex-col gap-1 pt-1">
+      {isAwaitingBoundary ? (
+        <SidebarGroup deviceTier={deviceTier} aria-label="Selecao de area">
+          <SidebarButton
+            icon={PencilLine}
+            label="Desenhar area"
+            active={tool === "boundary"}
+            activeColor="green"
+            onClick={() => setTool(tool === "boundary" ? "none" : "boundary")}
+          />
+          {tool === "boundary" ? (
+            <>
+              <SidebarDivider />
+              <SidebarButton
+                icon={Trash2}
+                label="Limpar area"
+                activeColor="red"
+                onClick={clearDrawing}
+              />
+            </>
+          ) : null}
+        </SidebarGroup>
+      ) : null}
       <SidebarGroup deviceTier={deviceTier} aria-label="Ferramentas de medicao">
         <SidebarButton
           icon={Ruler}
@@ -60,7 +84,7 @@ export function ResultsMapRailContent({
           </>
         ) : null}
       </SidebarGroup>
-      <MapLeftRailMapNavBlock deviceTier={deviceTier} showFitProject />
+      <MapLeftRailMapNavBlock deviceTier={deviceTier} />
     </div>
   );
 }

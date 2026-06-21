@@ -640,6 +640,71 @@ async def get_sparse_cloud(
     return JSONResponse(content={**data, "features": sampled})
 
 
+@router.post("/{project_id}/rebuild-sparse-cloud")
+async def rebuild_sparse_cloud(
+    project_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    Rebuild sparse_cloud.geojson from existing reconstruction.json without reprocessing.
+    Use when sparse_cloud_path is null but the ODM results are still on disk.
+    """
+    project = await project_repository.get(db, project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    project_dir = get_project_dir(project_id)
+
+    # Search for reconstruction.json anywhere inside the project directory
+    # (path may vary depending on ODM version / download structure)
+    recon: Path | None = None
+    candidate_paths = [
+        project_dir / "odm-results" / "opensfm" / "reconstruction.json",
+        project_dir / "odm-results" / "odm-results" / "opensfm" / "reconstruction.json",
+    ]
+    for candidate in candidate_paths:
+        if candidate.exists():
+            recon = candidate
+            break
+
+    if recon is None:
+        # Broader scan as fallback (limited depth to avoid scanning images/)
+        for found in project_dir.rglob("reconstruction.json"):
+            if "images" not in found.parts:
+                recon = found
+                break
+
+    if recon is None:
+        # Build a helpful listing of what is on disk
+        odm_dir = project_dir / "odm-results"
+        listing: list[str] = []
+        if odm_dir.exists():
+            for p in sorted(odm_dir.rglob("*"))[:60]:
+                listing.append(str(p.relative_to(project_dir)))
+        detail = (
+            "reconstruction.json not found in project directory. "
+            f"Files found under odm-results: {listing or ['(empty)']}"
+        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
+
+    from app.core.processing.sparse_cloud_converter import reconstruction_to_geojson
+
+    geojson_out = project_dir / "sparse_cloud.geojson"
+
+    try:
+        await asyncio.to_thread(reconstruction_to_geojson, recon, geojson_out)
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+
+    if not geojson_out.exists():
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="GeoJSON file was not created")
+
+    project.sparse_cloud_path = str(geojson_out)
+    await db.commit()
+
+    return {"sparse_cloud_available": True, "path": str(geojson_out)}
+
+
 @router.get("/{project_id}/bounds")
 async def get_project_bounds(
     project_id: UUID,

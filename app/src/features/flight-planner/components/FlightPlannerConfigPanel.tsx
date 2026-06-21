@@ -53,6 +53,7 @@ import {
   Switch,
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { openAndroidKmzFile } from "@/lib/openAndroidKmzFile";
 import {
   readUserPreferencesFromStorage,
   USER_PREFERENCES_UPDATED_EVENT,
@@ -2079,15 +2080,27 @@ export function FlightPlannerConfigPanel({
               },
             );
             setCalibrationSessionId(created.session_id);
-            await kmzCalibExport.generateAndDownload(
+            const { androidOpenUri } = await kmzCalibExport.generateAndDownload(
               calibrationMission.waypoints,
               params,
               {
                 variant: "calibration",
                 poi: null,
+                notify: false,
               },
             );
-            toast.success("Sessão de calibração criada e KMZ baixado.");
+            toast.success("Sessão de calibração criada e KMZ baixado.", {
+              ...(androidOpenUri
+                ? {
+                    action: {
+                      label: "Abrir",
+                      onClick: () => {
+                        void openAndroidKmzFile(androidOpenUri);
+                      },
+                    },
+                  }
+                : {}),
+            });
             void loadCalibrationSessions();
           } catch {
             toast.error(

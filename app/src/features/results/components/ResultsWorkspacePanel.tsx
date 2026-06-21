@@ -1,15 +1,15 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { ProgressRing } from "@/components/ui/ProgressRing";
-import { useQuery } from "@tanstack/react-query";
-import { Boxes, RefreshCw, Trash2 } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Boxes, RefreshCw, ScanSearch, Trash2 } from "lucide-react";
 import type { ProjectStatus } from "@/types/project";
 import { Badge, Button, Card } from "@/components/ui";
+import { BoundarySelectionPanel } from "@/features/results/components/BoundarySelectionPanel";
 import { DownloadPanel } from "@/features/results/components/DownloadPanel";
 import { LayerSelector } from "@/features/results/components/LayerSelector";
 import { ProcessingStatsGrid } from "@/features/results/components/ProcessingStatsGrid";
 import { ProcessingView } from "@/features/results/components/ProcessingView";
 import { ResultRunLayersPanel } from "@/features/results/components/ResultRunLayersPanel";
-import { PointCloudViewer } from "@/features/results/components/PointCloudViewer";
 import { StartProcessingPanel } from "@/features/results/components/StartProcessingPanel";
 import { useMapAutoBounds } from "@/features/results/hooks/useMapAutoBounds";
 import { useProjectStatus } from "@/features/results/hooks/useProjectStatus";
@@ -49,12 +49,10 @@ export function ResultsWorkspacePanel({
 
   const initialStatus = useMemo(() => {
     if (!listProject) return "uploading" as const;
-    const s = listProject.status as
-      | ProjectStatus
-      | "queued"
-      | "cancelled"
-      | "canceled";
+    const s = listProject.status as ProjectStatus;
     if (s === "processing" || s === "queued") return "processing" as const;
+    if (s === "sparse_processing") return "sparse_processing" as const;
+    if (s === "awaiting_boundary") return "awaiting_boundary" as const;
     if (s === "completed") return "completed" as const;
     if (s === "failed" || s === "cancelled" || s === "canceled")
       return "failed" as const;
@@ -73,15 +71,21 @@ export function ResultsWorkspacePanel({
     sparseCloudTrackProgress,
     sparseCloudTrackHint,
     startProcessing,
+    startSelective,
+    confirmBoundary,
+    skipBoundary,
     cancelProcessing,
     finalizeStuckMain,
     finalizeStuckPreview,
   } = useProjectStatus(projectId, initialStatus);
   const [preset, setPreset] = useState<ProcessingPreset>("standard");
   const [enablePreview, setEnablePreview] = useState(false);
+  const [enableSelective, setEnableSelective] = useState(false);
   const [redoPanelOpen, setRedoPanelOpen] = useState(false);
   const [purgeModalOpen, setPurgeModalOpen] = useState(false);
   const [cloudViewerOpen, setCloudViewerOpen] = useState(false);
+  const [rebuildingSparse, setRebuildingSparse] = useState(false);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     if (status === "processing") setRedoPanelOpen(false);
@@ -119,16 +123,35 @@ export function ResultsWorkspacePanel({
   const sparseOnMap =
     sparseCloudAvailable || Boolean(project?.sparseCloudAvailable);
 
+  const hasDsm = Boolean(project?.assets?.["odm_dem/dsm.tif"]);
+  const hasDtm = Boolean(project?.assets?.["odm_dem/dtm.tif"]);
+  const hasContours = Boolean(project?.assets?.["contours"]);
+
+  const unavailableLayers = useMemo(() => {
+    const unavailable: import("@/features/results/types").ResultLayerId[] = [];
+    if (!hasDsm) unavailable.push("dsm");
+    if (!hasDtm) unavailable.push("dtm");
+    if (!hasContours) unavailable.push("contours");
+    if (!sparseOnMap) unavailable.push("sparse");
+    return unavailable;
+  }, [hasDsm, hasDtm, hasContours, sparseOnMap]);
+
   useEffect(() => {
-    if (activeLayer === "sparse" && !sparseOnMap) {
+    if (unavailableLayers.includes(activeLayer)) {
       setActiveLayer("orthophoto");
     }
-  }, [activeLayer, sparseOnMap, setActiveLayer]);
+  }, [activeLayer, unavailableLayers, setActiveLayer]);
+
+  useEffect(() => {
+    if (status === "awaiting_boundary" && sparseOnMap) {
+      setActiveLayer("sparse");
+    }
+  }, [status, sparseOnMap, setActiveLayer]);
 
   const currentBadge = useMemo(() => {
     if (status === "completed")
       return <Badge variant="success">Concluido</Badge>;
-    if (status === "processing")
+    if (status === "processing" || status === "sparse_processing")
       return (
         <span className="inline-flex items-center gap-2">
           <ProgressRing
@@ -137,10 +160,18 @@ export function ResultsWorkspacePanel({
             progress={progress > 0 ? progress : undefined}
           />
           <span className="text-sm text-[#3ecf8e]">
-            {progress > 0 ? `${Math.round(progress)}%` : "Processando"}
+            {status === "sparse_processing"
+              ? progress > 0
+                ? `Nuvem esparsa ${Math.round(progress)}%`
+                : "Gerando nuvem esparsa"
+              : progress > 0
+                ? `${Math.round(progress)}%`
+                : "Processando"}
           </span>
         </span>
       );
+    if (status === "awaiting_boundary")
+      return <Badge variant="uploading">Aguardando seleção de área</Badge>;
     if (status === "failed") return <Badge variant="error">Falhou</Badge>;
     return <Badge variant="uploading">Aguardando processamento</Badge>;
   }, [status, progress]);
@@ -155,10 +186,11 @@ export function ResultsWorkspacePanel({
           activeLayer={activeLayer}
           onChange={setActiveLayer}
           sparseLayerUnlocked={sparseOnMap}
+          unavailableLayers={unavailableLayers}
           showRealFlightPath={showRealFlightPath}
           onRealFlightPathChange={setShowRealFlightPath}
         />
-        {sparseOnMap && (
+        {sparseOnMap ? (
           <button
             type="button"
             onClick={() => setCloudViewerOpen(true)}
@@ -167,7 +199,40 @@ export function ResultsWorkspacePanel({
             <Boxes className="size-3.5" />
             Visualizar nuvem esparsa em 3D
           </button>
-        )}
+        ) : status === "completed" ? (
+          <button
+            type="button"
+            disabled={rebuildingSparse}
+            onClick={async () => {
+              setRebuildingSparse(true);
+              try {
+                await projectsService.rebuildSparseCloud(projectId);
+                await queryClient.invalidateQueries({
+                  queryKey: ["project", projectId],
+                });
+              } catch (err) {
+                const { isAxiosError } = await import("axios");
+                if (isAxiosError(err) && err.response?.status === 404) {
+                  const { toast } = await import("sonner");
+                  toast.error(
+                    "reconstruction.json nao encontrado. Reprocesse com preset standard ou ultra para gerar a nuvem esparsa.",
+                  );
+                } else {
+                  const { toast } = await import("sonner");
+                  toast.error("Nao foi possivel gerar a nuvem esparsa.");
+                }
+              } finally {
+                setRebuildingSparse(false);
+              }
+            }}
+            className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs text-neutral-500 transition-colors hover:bg-white/5 hover:text-neutral-300 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <ScanSearch className="size-3.5" />
+            {rebuildingSparse
+              ? "Gerando nuvem esparsa…"
+              : "Tentar gerar nuvem esparsa"}
+          </button>
+        ) : null}
         <p className="text-xs text-neutral-500">
           Com MDS, MDT ou curvas, use o controlo vertical no mapa. Em
           ortomosaico, a opacidade é por execução no bloco abaixo.
@@ -251,27 +316,51 @@ export function ResultsWorkspacePanel({
           }
           onFinalizeStuck={status === "failed" ? finalizeStuckMain : undefined}
           enablePreview={enablePreview}
-          onTogglePreview={setEnablePreview}
+          onTogglePreview={!enableSelective ? setEnablePreview : undefined}
+          enableSelective={enableSelective}
+          onToggleSelective={setEnableSelective}
           onStart={() => void startProcessing(preset, enablePreview)}
+          onStartSelective={() => void startSelective(preset)}
         />
       ) : null}
 
-      {status === "processing" ? (
+      {status === "awaiting_boundary" ? (
+        <BoundarySelectionPanel
+          sparseCloudAvailable={sparseOnMap}
+          onViewCloud3D={
+            sparseOnMap ? () => setCloudViewerOpen(true) : undefined
+          }
+          onConfirm={(boundary) => void confirmBoundary(boundary)}
+          onSkip={() => void skipBoundary()}
+        />
+      ) : null}
+
+      {status === "processing" || status === "sparse_processing" ? (
         <ProcessingView
           progress={progress}
-          message={message}
+          message={
+            status === "sparse_processing"
+              ? "Gerando nuvem esparsa para seleção de área..."
+              : message
+          }
           eta={eta}
           logs={logs}
           onCancel={() => void cancelProcessing()}
-          previewStatus={previewStatus}
-          previewProgress={previewProgress}
+          previewStatus={status === "sparse_processing" ? null : previewStatus}
+          previewProgress={status === "sparse_processing" ? 0 : previewProgress}
           sparseCloudAvailable={sparseCloudAvailable}
           sparseCloudTrackProgress={sparseCloudTrackProgress}
           sparseCloudTrackHint={sparseCloudTrackHint}
-          onViewCloud3D={sparseCloudAvailable ? () => setCloudViewerOpen(true) : undefined}
-          onFinalizeStuckMain={finalizeStuckMain}
+          onViewCloud3D={
+            sparseCloudAvailable ? () => setCloudViewerOpen(true) : undefined
+          }
+          onFinalizeStuckMain={
+            status === "processing" ? finalizeStuckMain : undefined
+          }
           onFinalizeStuckPreview={
-            previewStatus === "processing" ? finalizeStuckPreview : undefined
+            status === "processing" && previewStatus === "processing"
+              ? finalizeStuckPreview
+              : undefined
           }
         />
       ) : null}
@@ -283,7 +372,6 @@ export function ResultsWorkspacePanel({
             projectId={projectId}
             assets={project?.assets ?? null}
           />
-          <PointCloudViewer />
         </>
       ) : null}
 
@@ -318,7 +406,9 @@ export function ResultsWorkspacePanel({
         <Suspense fallback={null}>
           <SparseCloudViewer
             open
-            onOpenChange={(open) => { if (!open) setCloudViewerOpen(false) }}
+            onOpenChange={(open) => {
+              if (!open) setCloudViewerOpen(false);
+            }}
             projectId={projectId}
             projectName={project?.name ?? "Projeto"}
           />

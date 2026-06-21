@@ -131,10 +131,7 @@ export function PlanMapRail({
             <FlightPlannerRouteControls />
           </LeftRailPopoverContent>
         </Popover.Root>
-        <MapLeftRailMapNavBlock
-          deviceTier={deviceTier}
-          showFitProject={false}
-        />
+        <MapLeftRailMapNavBlock deviceTier={deviceTier} />
       </div>
     </>
   );

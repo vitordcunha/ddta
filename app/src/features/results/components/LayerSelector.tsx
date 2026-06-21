@@ -5,6 +5,8 @@ interface LayerSelectorProps {
   onChange: (layer: ResultLayerId) => void
   /** Quando true, mostra a camada de nuvem esparsa (GeoJSON SfM). */
   sparseLayerUnlocked?: boolean
+  /** Camadas que ainda não têm dados gerados (desabilitadas na UI). */
+  unavailableLayers?: ResultLayerId[]
   showRealFlightPath?: boolean
   onRealFlightPathChange?: (v: boolean) => void
 }
@@ -23,6 +25,7 @@ export function LayerSelector({
   activeLayer,
   onChange,
   sparseLayerUnlocked = false,
+  unavailableLayers = [],
   showRealFlightPath = false,
   onRealFlightPathChange,
 }: LayerSelectorProps) {
@@ -31,21 +34,29 @@ export function LayerSelector({
   return (
     <div className="space-y-2">
       <div className="inline-flex flex-wrap rounded-full border border-[#2e2e2e] bg-[#0f0f0f] p-1">
-        {layers.map((layer) => (
-          <button
-            key={layer}
-            type="button"
-            onClick={() => onChange(layer)}
-            className={[
-              'rounded-full px-3 py-1 text-xs transition',
-              layer === activeLayer
-                ? 'bg-[rgba(62,207,142,0.12)] text-[#3ecf8e]'
-                : 'text-[#898989] hover:text-[#fafafa]',
-            ].join(' ')}
-          >
-            {labels[layer]}
-          </button>
-        ))}
+        {layers.map((layer) => {
+          const isUnavailable = unavailableLayers.includes(layer)
+          const isActive = layer === activeLayer
+          return (
+            <button
+              key={layer}
+              type="button"
+              onClick={() => !isUnavailable && onChange(layer)}
+              disabled={isUnavailable}
+              title={isUnavailable ? 'Não disponível para este projeto' : undefined}
+              className={[
+                'rounded-full px-3 py-1 text-xs transition',
+                isActive
+                  ? 'bg-[rgba(62,207,142,0.12)] text-[#3ecf8e]'
+                  : isUnavailable
+                    ? 'cursor-not-allowed text-[#444]'
+                    : 'text-[#898989] hover:text-[#fafafa]',
+              ].join(' ')}
+            >
+              {labels[layer]}
+            </button>
+          )
+        })}
       </div>
       {onRealFlightPathChange ? (
         <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400">

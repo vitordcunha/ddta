@@ -15,6 +15,18 @@ export type PlanRailProps = {
   radarMessage?: string;
 };
 
-export type ResultsRailProps = { variant: "results" };
+export type ResultsRailProps = {
+  variant: "results";
+  isAwaitingBoundary?: boolean;
+  overlay: WeatherMapOverlayPreferences;
+  setOverlay: (
+    next:
+      | WeatherMapOverlayPreferences
+      | ((prev: WeatherMapOverlayPreferences) => WeatherMapOverlayPreferences),
+  ) => void;
+  openWeatherApiKey: string;
+  radarStatus: RadarOverlayStatus;
+  radarMessage?: string;
+};
 
 export type WorkspaceMapLeftRailProps = PlanRailProps | ResultsRailProps;

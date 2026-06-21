@@ -13,6 +13,7 @@ import type {
 type StartProcessingPayload = {
   preset?: "fast" | "standard" | "ultra";
   enable_preview?: boolean;
+  selective?: boolean;
 };
 
 /** Corpo de POST /projects/:id/purge (snake_case, alinhado ao backend). */
@@ -206,6 +207,8 @@ type ApiProject = {
   preview_runs?: ApiPreviewRun[];
   last_processing_preset?: string | null;
   sparse_cloud_available?: boolean;
+  selective_processing_preset?: string | null;
+  processing_boundary?: Record<string, unknown> | null;
 };
 
 function mapProcessingRun(r: ApiProcessingRun): ProcessingRunInfo {
@@ -240,7 +243,9 @@ function normalizeProject(p: ApiProject): Project {
   const processingRuns = Array.isArray(p.processing_runs)
     ? p.processing_runs.map(mapProcessingRun)
     : [];
-  const previewRuns = Array.isArray(p.preview_runs) ? p.preview_runs.map(mapPreviewRun) : [];
+  const previewRuns = Array.isArray(p.preview_runs)
+    ? p.preview_runs.map(mapPreviewRun)
+    : [];
   return {
     id: String(p.id),
     name: p.name,
@@ -259,6 +264,9 @@ function normalizeProject(p: ApiProject): Project {
     previewRuns,
     lastProcessingPreset: p.last_processing_preset ?? null,
     sparseCloudAvailable: Boolean(p.sparse_cloud_available),
+    selectiveProcessingPreset: p.selective_processing_preset ?? null,
+    processingBoundary:
+      (p.processing_boundary as GeoJSON.GeoJsonObject | null) ?? null,
     flightPlan: toFlightPlanFromApi(p),
   };
 }
@@ -319,6 +327,24 @@ export const projectsService = {
     await http.post(`/projects/${id}/process`, payload);
   },
 
+  async confirmBoundary(
+    id: string,
+    boundary: GeoJSON.GeoJsonObject,
+  ): Promise<ProcessingEnqueueResponse> {
+    const { data } = await http.post<ProcessingEnqueueResponse>(
+      `/projects/${id}/confirm-boundary`,
+      { boundary },
+    );
+    return data;
+  },
+
+  async skipBoundary(id: string): Promise<ProcessingEnqueueResponse> {
+    const { data } = await http.post<ProcessingEnqueueResponse>(
+      `/projects/${id}/skip-boundary`,
+    );
+    return data;
+  },
+
   async finalizeProcessing(id: string): Promise<ProcessingEnqueueResponse> {
     const { data } = await http.post<ProcessingEnqueueResponse>(
       `/projects/${id}/finalize`,
@@ -335,9 +361,7 @@ export const projectsService = {
     return data;
   },
 
-  async listProjectImages(
-    projectId: string,
-  ): Promise<
+  async listProjectImages(projectId: string): Promise<
     {
       id: string;
       filename: string;
@@ -400,14 +424,18 @@ export const projectsService = {
     return data;
   },
 
-  async purge(projectId: string, body: ProjectPurgeRequestBody): Promise<Project> {
-    const { data } = await http.post<ApiProject>(`/projects/${projectId}/purge`, body);
+  async purge(
+    projectId: string,
+    body: ProjectPurgeRequestBody,
+  ): Promise<Project> {
+    const { data } = await http.post<ApiProject>(
+      `/projects/${projectId}/purge`,
+      body,
+    );
     return normalizeProject(data);
   },
 
-  async getProjectBounds(
-    id: string,
-  ): Promise<{
+  async getProjectBounds(id: string): Promise<{
     west: number;
     south: number;
     east: number;
@@ -434,10 +462,21 @@ export const projectsService = {
     if (options?.maxPoints != null) {
       q.set("max_points", String(options.maxPoints));
     }
+    console.log("teseeeeee");
     const suffix = q.toString() ? `?${q.toString()}` : "";
     const { data } = await http.get<GeoJSON.GeoJsonObject>(
       `/projects/${id}/sparse-cloud${suffix}`,
       { timeout: 120_000 },
+    );
+    console.log("data", data);
+    return data;
+  },
+
+  async rebuildSparseCloud(
+    id: string,
+  ): Promise<{ sparse_cloud_available: boolean }> {
+    const { data } = await http.post<{ sparse_cloud_available: boolean }>(
+      `/projects/${id}/rebuild-sparse-cloud`,
     );
     return data;
   },
@@ -456,6 +495,28 @@ export const projectsService = {
     const workspaceId = import.meta.env.VITE_WORKSPACE_ID ?? "default";
     const separator = apiBase.includes("?") ? "&" : "?";
     return `${apiBase}/projects/${id}/status/stream${separator}workspace_id=${encodeURIComponent(workspaceId)}`;
+  },
+
+  getDsmTileUrl(id: string): string {
+    const apiBase = (
+      import.meta.env.VITE_API_URL ?? "http://192.168.1.39:8000/api/v1"
+    ).replace(/\/$/, "");
+    return `${apiBase}/projects/${id}/dsm-tiles/{z}/{x}/{y}.png`;
+  },
+
+  getDtmTileUrl(id: string): string {
+    const apiBase = (
+      import.meta.env.VITE_API_URL ?? "http://192.168.1.39:8000/api/v1"
+    ).replace(/\/$/, "");
+    return `${apiBase}/projects/${id}/dtm-tiles/{z}/{x}/{y}.png`;
+  },
+
+  async getContoursGeoJson(id: string): Promise<GeoJSON.GeoJsonObject> {
+    const { data } = await http.get<GeoJSON.GeoJsonObject>(
+      `/projects/${id}/contours`,
+      { timeout: 30_000 },
+    );
+    return data;
   },
 
   async createCalibrationSession(

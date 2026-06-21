@@ -21,8 +21,16 @@ class ODMClient:
             raise RuntimeError("PyODM is not available. Install 'pyodm' to use processing.") from exc
         self.node = Node(host, port)
 
-    def create_task(self, project_id: str, image_paths: list[Path], options: dict) -> str:
+    def create_task(
+        self,
+        project_id: str,
+        image_paths: list[Path],
+        options: dict,
+        extra_files: list[Path] | None = None,
+    ) -> str:
         files = [str(path) for path in image_paths]
+        if extra_files:
+            files.extend(str(p) for p in extra_files)
         task = self.node.create_task(files, options)
         return str(task.uuid)
 

@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { ResultLayerId } from '@/features/results/types'
 
-export type ResultsMapToolId = 'none' | 'distance' | 'area' | 'elevation'
+export type ResultsMapToolId = 'none' | 'distance' | 'area' | 'elevation' | 'boundary'
 
 /** Leaflet LatLngBounds format: [[south, west], [north, east]] */
 export type MapBounds = [[number, number], [number, number]]
@@ -15,6 +15,8 @@ const initial = {
   distancePoints: [] as [number, number][],
   areaPoints: [] as [number, number][],
   elevationPoint: null as [number, number] | null,
+  /** Boundary polygon points drawn by user in [lat, lng] order for display; converted to GeoJSON [lng, lat] on confirm. */
+  boundaryPoints: [] as [number, number][],
   autoFitBounds: null as MapBounds | null,
   /** Chaves `full:current`, `full:<runId>`, `preview:current`, `preview:<runId>`. */
   orthophotoLayerVisibility: {} as Record<string, boolean>,
@@ -37,6 +39,10 @@ type ResultsViewState = typeof initial & {
   setOrthophotoLayerVisibility: (key: string, visible: boolean) => void
   setOrthophotoLayerOpacity: (key: string, opacityPct: number) => void
   setSelectedRunDetailKey: (key: string | null) => void
+  addBoundaryPoint: (p: [number, number]) => void
+  clearBoundaryPoints: () => void
+  /** Returns a closed GeoJSON Polygon ring in [lng, lat] order. Returns null if < 3 points. */
+  buildBoundaryGeoJson: () => GeoJSON.Feature<GeoJSON.Polygon> | null
   clearDrawing: () => void
   reset: () => void
 }
@@ -72,11 +78,22 @@ export const useResultsViewStore = create<ResultsViewState>((set) => ({
       return { orthophotoLayerOpacity: { ...s.orthophotoLayerOpacity, [key]: n } }
     }),
   setSelectedRunDetailKey: (selectedRunDetailKey) => set({ selectedRunDetailKey }),
+  addBoundaryPoint: (p) => set((s) => ({ boundaryPoints: [...s.boundaryPoints, p] })),
+  clearBoundaryPoints: () => set({ boundaryPoints: [] }),
+  buildBoundaryGeoJson: () => {
+    const pts = useResultsViewStore.getState().boundaryPoints
+    if (pts.length < 3) return null
+    // Convert [lat, lng] → [lng, lat] for GeoJSON spec; close the ring
+    const ring: [number, number][] = [...pts.map(([lat, lng]) => [lng, lat] as [number, number])]
+    ring.push(ring[0])
+    return { type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] }, properties: {} }
+  },
   clearDrawing: () =>
     set({
       distancePoints: [],
       areaPoints: [],
       elevationPoint: null,
+      boundaryPoints: [],
       tool: 'none',
     }),
   reset: () => set({ ...initial }),

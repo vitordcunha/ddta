@@ -1,3 +1,4 @@
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from uuid import UUID
@@ -6,11 +7,13 @@ from celery import shared_task
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
+log = logging.getLogger(__name__)
+
 from app.config import settings
 from app.core.processing.cog_converter import convert_to_cog
 from app.core.processing.contour_generator import generate_contours
 from app.core.processing.odm_client import ODMClient, TaskInfo
-from app.core.processing.presets import FAST_PREVIEW_OPTIONS
+from app.core.processing.presets import FAST_PREVIEW_OPTIONS, SPARSE_PHASE_OPTIONS
 from app.core.processing.sparse_cloud_converter import reconstruction_to_geojson
 from app.core.storage.file_manager import get_project_dir, organize_results
 from app.db.models.project import Project
@@ -91,6 +94,7 @@ def _ensure_sparse_cloud_geojson(project_id: UUID, odm_results_dir: Path) -> Non
                 pass
         reconstruction_to_geojson(recon, geojson_out)
     except Exception:
+        log.exception("Failed to generate sparse cloud GeoJSON for project %s", project_id)
         return
 
     with SyncSessionLocal() as db:
@@ -152,7 +156,68 @@ def run_preview_post_download_steps(project_uuid: UUID) -> dict[str, str]:
 
 
 @shared_task(bind=True, acks_late=True)
-def process_images_task(self, project_id: str, image_paths: list[str], options: dict) -> dict:
+def process_sparse_phase_task(self, project_id: str, image_paths: list[str], preset: str) -> dict:
+    """
+    Phase-1 of selective processing: runs ODM with SPARSE_PHASE_OPTIONS (fast SfM only),
+    generates sparse_cloud.geojson, then sets status → awaiting_boundary so the user
+    can draw a boundary polygon before full processing begins.
+    """
+    project_uuid = UUID(project_id)
+
+    with SyncSessionLocal() as db:
+        project = db.execute(select(Project).where(Project.id == project_uuid)).scalar_one_or_none()
+        if project:
+            project.status = "sparse_processing"
+            project.progress = 0
+            project.processing_task_uuid = self.request.id
+            project.selective_processing_preset = preset
+            db.commit()
+
+    client = ODMClient(settings.odm_node_host, settings.odm_node_port)
+    odm_task_uuid = client.create_task(project_id, [Path(p) for p in image_paths], SPARSE_PHASE_OPTIONS)
+
+    with SyncSessionLocal() as db:
+        _update_project_status(db, project_uuid, status="sparse_processing", progress=5, odm_task_uuid=odm_task_uuid)
+
+    project_dir = get_project_dir(project_uuid)
+    sparse_results_dir = project_dir / "sparse-results"
+
+    try:
+        def on_sparse_progress(info: TaskInfo) -> None:
+            progress = max(5, min(95, int(info.progress)))
+            with SyncSessionLocal() as db_inner:
+                _update_project_status(db_inner, project_uuid, status="sparse_processing", progress=progress)
+
+        client.wait_for_completion(odm_task_uuid, on_progress=on_sparse_progress, poll_interval_s=5)
+        info = client.get_task_info(odm_task_uuid)
+        if info.status != "completed":
+            raise RuntimeError(f"Sparse ODM task finished with status '{info.status}'")
+
+        # Fetch reconstruction.json before full download
+        if client.fetch_reconstruction_json(odm_task_uuid, sparse_results_dir):
+            _ensure_sparse_cloud_geojson(project_uuid, sparse_results_dir)
+
+        # Full asset download (small since no dense reconstruction)
+        client.download_assets(odm_task_uuid, sparse_results_dir)
+        _ensure_sparse_cloud_geojson(project_uuid, sparse_results_dir)
+
+        with SyncSessionLocal() as db:
+            project = db.execute(select(Project).where(Project.id == project_uuid)).scalar_one_or_none()
+            if project:
+                project.status = "awaiting_boundary"
+                project.progress = 100
+                db.commit()
+
+        return {"status": "awaiting_boundary", "project_id": project_id}
+
+    except Exception as exc:
+        with SyncSessionLocal() as db:
+            _update_project_status(db, project_uuid, status="failed", progress=0)
+        raise exc
+
+
+@shared_task(bind=True, acks_late=True)
+def process_images_task(self, project_id: str, image_paths: list[str], options: dict, boundary_path: str | None = None) -> dict:
     project_uuid = UUID(project_id)
     with SyncSessionLocal() as db:
         _update_project_status(
@@ -164,7 +229,11 @@ def process_images_task(self, project_id: str, image_paths: list[str], options: 
         )
 
     client = ODMClient(settings.odm_node_host, settings.odm_node_port)
-    odm_task_uuid = client.create_task(project_id, [Path(path) for path in image_paths], options)
+    extra_files = [Path(boundary_path)] if boundary_path else None
+    if boundary_path and extra_files:
+        options = dict(options)
+        options["boundary"] = "boundary.json"
+    odm_task_uuid = client.create_task(project_id, [Path(path) for path in image_paths], options, extra_files=extra_files)
 
     with SyncSessionLocal() as db:
         _update_project_status(

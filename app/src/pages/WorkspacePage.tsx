@@ -563,7 +563,15 @@ export function WorkspacePage() {
             bottom: "max(6rem, calc(0.75rem + var(--safe-area-bottom, 0px)))",
           }}
         >
-          <WorkspaceMapLeftRail variant="results" />
+          <WorkspaceMapLeftRail
+            variant="results"
+            isAwaitingBoundary={getProject(projectId ?? "")?.status === "awaiting_boundary"}
+            overlay={mapWeather.overlay}
+            setOverlay={mapWeather.setOverlay}
+            openWeatherApiKey={mapWeather.openWeatherApiKey}
+            radarStatus={mapWeather.radarStatus}
+            radarMessage={mapWeather.radarMessage}
+          />
         </div>
       ) : null}
 
@@ -670,79 +678,81 @@ export function WorkspacePage() {
         className="fixed inset-0 z-0 overflow-hidden bg-[#0f0f0f] text-[#fafafa]"
         style={workspaceShellStyle}
       >
-      <PenStylusShadow />
-      {splitLayoutActive ? (
-        <div
-          className="absolute left-0 right-0 bottom-0 z-0 flex min-h-0 w-full min-w-0 flex-row"
-          style={{ top: "var(--topbar-height, 3.5rem)" }}
-        >
-          <div className="relative z-0 min-h-0 min-w-0 flex-1">
-            <div className="absolute inset-0 z-0 min-h-0 w-full min-w-0">
-              {mapViewCore}
-            </div>
-            {mapOverlays}
-          </div>
-          <WorkspaceLayoutPanel
-            collapsedLabel={collapsedLabel}
-            onOpenChange={onRightPanelOpenChange}
-            transitionPending={isRightPanelTransitionPending}
-            splitLayout
-            onSplitDetach={handleSplitDetach}
-            onSplitMetrics={onSplitMetrics}
-            onSplitResizeCommit={bumpMapLayout}
-            splitDragActiveRef={splitDragActiveRef}
-            onSplitDragStart={onSplitDragStart}
-            onSplitDragEnd={onSplitDragEnd}
-            onSplitPreviewWidth={applySplitPreviewWidth}
-          >
-            <Suspense fallback={<FlightConfigSkeleton />}>{mainPanel}</Suspense>
-          </WorkspaceLayoutPanel>
-        </div>
-      ) : (
-        <>
-          <div className="absolute inset-0 z-0">{mapViewCore}</div>
-          {mapOverlays}
-        </>
-      )}
-
-      <WorkspaceTopBar />
-
-      {!splitLayoutActive ? (
-        <div
-          className="pointer-events-none absolute left-0 right-0 z-40 p-3 sm:p-4"
-          style={{
-            top: "max(3.5rem, calc(3.5rem + var(--safe-area-top)))",
-            bottom: "max(0.75rem, var(--safe-area-bottom))",
-            paddingLeft: "max(0.75rem, env(safe-area-inset-left, 0px))",
-            paddingRight:
-              "calc(max(0.75rem, env(safe-area-inset-right, 0px)) + var(--workspace-edge-controls-gap, 3.5rem))",
-          }}
-        >
+        <PenStylusShadow />
+        {splitLayoutActive ? (
           <div
-            className={cn(
-              rightPanelOpen ? "pointer-events-auto" : "pointer-events-none",
-              "flex h-full w-full min-w-0 min-h-0 flex-col justify-end",
-              "lg:ml-auto lg:max-w-lg lg:items-stretch lg:justify-start",
-              "landscape:min-h-0",
-            )}
+            className="absolute left-0 right-0 bottom-0 z-0 flex min-h-0 w-full min-w-0 flex-row"
+            style={{ top: "var(--topbar-height, 3.5rem)" }}
           >
+            <div className="relative z-0 min-h-0 min-w-0 flex-1">
+              <div className="absolute inset-0 z-0 min-h-0 w-full min-w-0">
+                {mapViewCore}
+              </div>
+              {mapOverlays}
+            </div>
             <WorkspaceLayoutPanel
               collapsedLabel={collapsedLabel}
               onOpenChange={onRightPanelOpenChange}
               transitionPending={isRightPanelTransitionPending}
-              onSplitReattach={
-                breakpoint === "tablet" && landscape && splitDetached
-                  ? handleSplitReattach
-                  : undefined
-              }
+              splitLayout
+              onSplitDetach={handleSplitDetach}
+              onSplitMetrics={onSplitMetrics}
+              onSplitResizeCommit={bumpMapLayout}
+              splitDragActiveRef={splitDragActiveRef}
+              onSplitDragStart={onSplitDragStart}
+              onSplitDragEnd={onSplitDragEnd}
+              onSplitPreviewWidth={applySplitPreviewWidth}
             >
               <Suspense fallback={<FlightConfigSkeleton />}>
                 {mainPanel}
               </Suspense>
             </WorkspaceLayoutPanel>
           </div>
-        </div>
-      ) : null}
+        ) : (
+          <>
+            <div className="absolute inset-0 z-0">{mapViewCore}</div>
+            {mapOverlays}
+          </>
+        )}
+
+        <WorkspaceTopBar />
+
+        {!splitLayoutActive ? (
+          <div
+            className="pointer-events-none absolute left-0 right-0 z-40 p-3 sm:p-4"
+            style={{
+              top: "max(3.5rem, calc(3.5rem + var(--safe-area-top)))",
+              bottom: "max(0.75rem, var(--safe-area-bottom))",
+              paddingLeft: "max(0.75rem, env(safe-area-inset-left, 0px))",
+              paddingRight:
+                "calc(max(0.75rem, env(safe-area-inset-right, 0px)) + var(--workspace-edge-controls-gap, 3.5rem))",
+            }}
+          >
+            <div
+              className={cn(
+                rightPanelOpen ? "pointer-events-auto" : "pointer-events-none",
+                "flex h-full w-full min-w-0 min-h-0 flex-col justify-end",
+                "lg:ml-auto lg:max-w-lg lg:items-stretch lg:justify-start",
+                "landscape:min-h-0",
+              )}
+            >
+              <WorkspaceLayoutPanel
+                collapsedLabel={collapsedLabel}
+                onOpenChange={onRightPanelOpenChange}
+                transitionPending={isRightPanelTransitionPending}
+                onSplitReattach={
+                  breakpoint === "tablet" && landscape && splitDetached
+                    ? handleSplitReattach
+                    : undefined
+                }
+              >
+                <Suspense fallback={<FlightConfigSkeleton />}>
+                  {mainPanel}
+                </Suspense>
+              </WorkspaceLayoutPanel>
+            </div>
+          </div>
+        ) : null}
       </div>
     </WorkspaceSplitDragActiveRefContext.Provider>
   );

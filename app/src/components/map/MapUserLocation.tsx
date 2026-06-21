@@ -1,14 +1,17 @@
-import { Crosshair, Loader2, ScanSearch } from "lucide-react"
-import { useCallback } from "react"
+import { Crosshair, Loader2 } from "lucide-react"
+import { useCallback, useMemo, useRef } from "react"
 import { Circle, CircleMarker, useMap } from "react-leaflet"
 import type {
   GeolocationCoords,
   GeolocationHookState,
 } from "@/hooks/useGeolocation"
+import { computeFlightPlanMapBounds } from "@/features/flight-planner/utils/computeFlightPlanMapBounds"
+import { useFlightStore } from "@/features/flight-planner/stores/useFlightStore"
 import { useResultsViewStore } from "@/features/results/stores/useResultsViewStore"
 import { cn } from "@/lib/utils"
 
 const LOCATE_ZOOM = 16
+const LOCATE_USER_SECOND_CLICK_WITHIN_MS = 3000
 /** Evita circulos enormes no mapa quando a precisao vem inflada */
 const MAX_ACCURACY_RADIUS_M = 2000
 
@@ -57,6 +60,7 @@ export function MapUserLocationLayers({
 
 /**
  * Botao de localizacao (e mensagem de erro). Encaixar dentro do stack inferior esquerdo.
+ * 1 toque: area do projeto ou da missao (se houver); 2 toque em ate 3 s: minha posicao.
  */
 export function MapUserLocationToolbar({
   error,
@@ -65,8 +69,27 @@ export function MapUserLocationToolbar({
 }: Omit<MapUserLocationProps, "position">) {
   const map = useMap()
   const autoFitBounds = useResultsViewStore((s) => s.autoFitBounds)
+  const polygon = useFlightStore((s) => s.polygon)
+  const draftPoints = useFlightStore((s) => s.draftPoints)
+  const waypoints = useFlightStore((s) => s.waypoints)
+  const poi = useFlightStore((s) => s.poi)
 
-  const onLocate = useCallback(() => {
+  const planBounds = useMemo(
+    () =>
+      computeFlightPlanMapBounds({
+        polygon,
+        draftPoints,
+        waypoints,
+        poi,
+      }),
+    [polygon, draftPoints, waypoints, poi],
+  )
+
+  const primaryFitBounds = autoFitBounds ?? planBounds
+
+  const lastPrimaryFitTapMsRef = useRef(0)
+
+  const flyToUser = useCallback(() => {
     void locate().then((coords) => {
       map.flyTo([coords.lat, coords.lng], Math.max(map.getZoom(), LOCATE_ZOOM), {
         duration: 0.75,
@@ -74,10 +97,30 @@ export function MapUserLocationToolbar({
     })
   }, [locate, map])
 
-  const onFitProject = useCallback(() => {
-    if (!autoFitBounds) return
-    map.flyToBounds(autoFitBounds, { padding: [32, 32], maxZoom: 20, duration: 0.75 })
-  }, [autoFitBounds, map])
+  const flyToPrimary = useCallback(() => {
+    if (!primaryFitBounds) return
+    map.flyToBounds(primaryFitBounds, { padding: [32, 32], maxZoom: 20, duration: 0.75 })
+  }, [primaryFitBounds, map])
+
+  const onLocateButtonClick = useCallback(() => {
+    const now = Date.now()
+
+    if (!primaryFitBounds) {
+      lastPrimaryFitTapMsRef.current = 0
+      flyToUser()
+      return
+    }
+
+    const anchor = lastPrimaryFitTapMsRef.current
+    if (anchor > 0 && now - anchor < LOCATE_USER_SECOND_CLICK_WITHIN_MS) {
+      lastPrimaryFitTapMsRef.current = 0
+      flyToUser()
+      return
+    }
+
+    lastPrimaryFitTapMsRef.current = now
+    flyToPrimary()
+  }, [primaryFitBounds, flyToPrimary, flyToUser])
 
   return (
     <div className="pointer-events-auto flex flex-col items-stretch gap-2">
@@ -93,27 +136,21 @@ export function MapUserLocationToolbar({
         className="flex flex-col overflow-hidden rounded-xl border border-white/15 bg-[#121212]/90 shadow-lg backdrop-blur-md"
         aria-live="polite"
       >
-        {autoFitBounds ? (
-          <>
-            <button
-              type="button"
-              className={cn(BTN)}
-              onClick={onFitProject}
-              title="Ir para area do projeto"
-              aria-label="Centralizar o mapa na area do projeto"
-            >
-              <ScanSearch className="size-5" aria-hidden />
-            </button>
-            <div className="mx-3 h-px bg-white/10" />
-          </>
-        ) : null}
         <button
           type="button"
           className={cn(BTN)}
-          onClick={onLocate}
+          onClick={onLocateButtonClick}
           disabled={phase === "loading"}
-          title="Minha localizacao"
-          aria-label="Centralizar o mapa na minha localizacao"
+          title={
+            primaryFitBounds
+              ? "Area do voo: 1 clique. Minha posicao: outro clique em ate 3 s apos o primeiro."
+              : "Minha localizacao"
+          }
+          aria-label={
+            primaryFitBounds
+              ? "Primeiro toque encaixa a area do voo; segundo toque em ate 3 segundos vai para a minha localizacao"
+              : "Centralizar o mapa na minha localizacao"
+          }
         >
           {phase === "loading" ? (
             <Loader2 className="size-5 animate-spin" aria-hidden />

@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from uuid import UUID
 
@@ -16,7 +17,7 @@ from app.core.storage.file_manager import (
 from app.db.models.project import Project
 from app.db.models.project_image import ProjectImage
 from app.dependencies import get_db
-from app.schemas.processing import ProcessRequest, ProcessingStatus
+from app.schemas.processing import BoundaryRequest, ProcessRequest, ProcessingStatus
 from app.tasks.celery_app import celery_app
 from app.tasks.processing_tasks import (
     finalize_main_processing_task,
@@ -25,6 +26,7 @@ from app.tasks.processing_tasks import (
     preview_orthophoto_path,
     process_images_task,
     process_preview_task,
+    process_sparse_phase_task,
 )
 from app.utils.rate_limit import limiter
 
@@ -57,7 +59,7 @@ async def process_project(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     if project.status == "processing":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project is already processing")
-    if project.status not in {"draft", "failed", "completed", "canceled", "cancelled"}:
+    if project.status not in {"draft", "failed", "completed", "canceled", "cancelled", "awaiting_boundary"}:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project is not in a valid state")
 
     images_result = await db.execute(
@@ -100,6 +102,17 @@ async def process_project(
             project.preview_runs = [*list(project.preview_runs or []), prev_archived]
 
     project.last_processing_preset = body.preset
+
+    if body.selective:
+        task = process_sparse_phase_task.delay(str(project_id), image_paths, body.preset)
+        project.status = "queued"
+        project.progress = 0
+        project.processing_task_uuid = task.id
+        project.selective_processing_preset = body.preset
+        project.processing_boundary = None
+        await db.commit()
+        await db.refresh(project)
+        return _processing_status(project)
 
     task = process_images_task.delay(str(project_id), image_paths, options)
     project.status = "queued"
@@ -200,6 +213,113 @@ async def finalize_preview_processing(
     return _processing_status(project)
 
 
+@router.post(
+    "/projects/{project_id}/confirm-boundary",
+    response_model=ProcessingStatus,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+@limiter.limit(settings.rate_limit_processing)
+async def confirm_boundary(
+    request: Request,
+    project_id: UUID,
+    body: BoundaryRequest,
+    db: AsyncSession = Depends(get_db),
+) -> ProcessingStatus:
+    """User confirms the processing boundary polygon after sparse cloud phase."""
+    del request
+    project = await db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    if project.status != "awaiting_boundary":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Project is not awaiting boundary selection",
+        )
+
+    images_result = await db.execute(
+        select(ProjectImage).where(ProjectImage.project_id == project_id).order_by(ProjectImage.created_at.asc())
+    )
+    images = list(images_result.scalars().all())
+    if not images:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Project has no images")
+    image_paths = [str(get_project_dir(project_id) / "images" / image.filename) for image in images]
+
+    # Normalize to GeoJSON Feature if raw geometry was passed
+    boundary_geojson = body.boundary
+    if boundary_geojson.get("type") in ("Polygon", "MultiPolygon"):
+        boundary_geojson = {"type": "Feature", "geometry": boundary_geojson, "properties": {}}
+
+    # Write boundary.json to disk so the Celery task can pass it to ODM
+    boundary_file = get_project_dir(project_id) / "boundary.json"
+    boundary_file.write_text(json.dumps(boundary_geojson))
+
+    preset = project.selective_processing_preset or "standard"
+    try:
+        options = get_odm_options(preset)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    project.processing_boundary = boundary_geojson
+
+    task = process_images_task.delay(str(project_id), image_paths, options, str(boundary_file))
+    project.status = "queued"
+    project.progress = 0
+    project.processing_task_uuid = task.id
+    project.odm_task_uuid = None
+
+    await db.commit()
+    await db.refresh(project)
+    return _processing_status(project)
+
+
+@router.post(
+    "/projects/{project_id}/skip-boundary",
+    response_model=ProcessingStatus,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+@limiter.limit(settings.rate_limit_processing)
+async def skip_boundary(
+    request: Request,
+    project_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> ProcessingStatus:
+    """Skip boundary selection and run full processing on the entire area."""
+    del request
+    project = await db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    if project.status != "awaiting_boundary":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Project is not awaiting boundary selection",
+        )
+
+    images_result = await db.execute(
+        select(ProjectImage).where(ProjectImage.project_id == project_id).order_by(ProjectImage.created_at.asc())
+    )
+    images = list(images_result.scalars().all())
+    if not images:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Project has no images")
+    image_paths = [str(get_project_dir(project_id) / "images" / image.filename) for image in images]
+
+    preset = project.selective_processing_preset or "standard"
+    try:
+        options = get_odm_options(preset)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    task = process_images_task.delay(str(project_id), image_paths, options)
+    project.status = "queued"
+    project.progress = 0
+    project.processing_task_uuid = task.id
+    project.odm_task_uuid = None
+    project.processing_boundary = None
+
+    await db.commit()
+    await db.refresh(project)
+    return _processing_status(project)
+
+
 @router.delete("/projects/{project_id}/process", response_model=ProcessingStatus)
 @limiter.limit(settings.rate_limit_processing)
 async def cancel_processing(
@@ -209,7 +329,7 @@ async def cancel_processing(
     project = await db.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-    if project.status not in {"queued", "processing"}:
+    if project.status not in {"queued", "processing", "sparse_processing", "awaiting_boundary"}:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project is not processing")
 
     if project.processing_task_uuid:

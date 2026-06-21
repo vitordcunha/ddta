@@ -6,9 +6,14 @@ const statusMap: Record<ProjectStatus, { variant: 'created' | 'uploading' | 'pro
   draft: { variant: 'created', label: 'Rascunho' },
   created: { variant: 'created', label: 'Aguardando' },
   uploading: { variant: 'uploading', label: 'Enviando imagens' },
+  queued: { variant: 'processing', label: 'Na fila' },
   processing: { variant: 'processing', label: 'Processando' },
+  sparse_processing: { variant: 'processing', label: 'Nuvem esparsa' },
+  awaiting_boundary: { variant: 'created', label: 'Aguardando limite' },
   completed: { variant: 'completed', label: 'Concluido' },
   failed: { variant: 'failed', label: 'Erro' },
+  cancelled: { variant: 'failed', label: 'Cancelado' },
+  canceled: { variant: 'failed', label: 'Cancelado' },
 }
 
 type ProjectStatusBadgeProps = {
